@@ -139,6 +139,13 @@ function formatDate(iso: string): string | null {
     ? date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
     : null;
 }
+// "2026-04-01" -> "Apr 1, 2026"
+function shortDate(iso: string): string {
+  const date = new Date(`${iso}T00:00:00`);
+  return Number.isNaN(date.getTime())
+    ? iso
+    : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
 /* ---------- Farm plots: crop records and soil ---------- */
 
 type Performance = "good" | "average" | "poor" | "failure" | "unknown";
@@ -303,7 +310,7 @@ function loadStore(): FarmStore {
 
 // Data the backend has. Cards in the Condition sheet, and the layers that can be drawn on the map.
 const METRICS: { key: MetricKey; label: string; unit: string; color: string }[] = [
-  { key: "precipitation", label: "Precipitation", unit: " mm/day", color: "#2f7fd1" },
+  { key: "precipitation", label: "Precipitation", unit: " mm", color: "#2f7fd1" },
   { key: "temperature", label: "Temperature", unit: " °C", color: "#e0773a" },
   // Set `unit` from the file (e.g. " m³/m³" if its metadata says so, "" for a plain 0-1 wetness fraction).
   { key: "soilMoisture", label: "Soil moisture", unit: "", color: "#43c864" },
@@ -318,6 +325,51 @@ const LAYERS: { key: LayerKey; label: string; icon: string; iconClicked: string;
   { key: "soilMoisture", label: "Soil Moisture", icon: soilMoistureIcon, iconClicked: soilMoistureClicked, available: true },
   { key: "precipitation", label: "Precipitation", icon: precipitationIcon, iconClicked: precipitationClicked, available: true },
 ];
+
+// Colour scale shown in the legend for each map layer.
+// NOTE: the heat map picture is painted by the backend. Make `stops`, `min` and `max` match the colormap and
+// value range it uses, otherwise the legend will not describe what is on the map.
+interface LegendSpec {
+  title: string;
+  unit: string;
+  min: number;
+  max: number;
+  openEnd?: boolean; // values above `max` use the last colour, so the top label reads "40+"
+  stops: string[]; // colours from `min` to `max`
+  low: string;
+  high: string;
+}
+const LEGENDS: Record<MetricKey, LegendSpec> = {
+  temperature: {
+    title: "Temperature",
+    unit: "°C",
+    min: 20,
+    max: 40,
+    openEnd: true,
+    stops: ["#3b4cc0", "#7ab6e8", "#f5e663", "#f39c3d", "#c0392b"],
+    low: "Cooler",
+    high: "Hotter",
+  },
+  soilMoisture: {
+    title: "Soil moisture",
+    unit: "%",
+    min: 0,
+    max: 100,
+    stops: ["#8c5a2b", "#d9b36c", "#7fc97f", "#2c8f6d", "#1d5fa8"],
+    low: "Drier",
+    high: "Wetter",
+  },
+  precipitation: {
+    title: "Precipitation",
+    unit: "mm",
+    min: 0,
+    max: 50,
+    openEnd: true,
+    stops: ["#f1f6fb", "#a8d0f0", "#4f9bdb", "#2461b3", "#2b1f7a"],
+    low: "Less",
+    high: "More",
+  },
+};
 
 const isMetric = (k: LayerKey | null): k is MetricKey => METRICS.some((m) => m.key === k);
 
@@ -368,7 +420,7 @@ function polygonAreaHa(points: LatLng[]): number {
 
 // Dashboard helpers --------------------------------------------------------------
 
-// Placeholder rule: pick the weather picture from the day's rainfall (mm/day). Tune the numbers later.
+// Placeholder rule: pick the weather picture from the day's rainfall (mm). Tune the numbers later.
 function weatherFor(precip: number | null | undefined): { src: string; label: string } {
   if (precip != null && precip >= 5) return { src: weatherRainy, label: "Rainy" };
   if (precip != null && precip >= 1) return { src: weatherCloudy, label: "Cloudy" };
@@ -391,6 +443,130 @@ function formatReading(key: MetricKey, v: number | null | undefined): { value: s
   // Soil moisture: a 0-1 fraction is shown as a percentage. Change this if your file uses another unit.
   if (key === "soilMoisture") return v <= 1 ? { value: String(Math.round(v * 100)), unit: "%" } : { value: String(Math.round(v)), unit: "" };
   return { value: v.toFixed(1), unit: " mm" };
+}
+
+/* ---------- plain-language status: Good / Watch / Alert ---------- */
+
+type Level = "good" | "watch" | "alert" | "none";
+interface Status {
+  level: Level;
+  label: string; // shown in the coloured pill
+  text: string; // the one-line meaning
+}
+const LEVEL_LABEL: Record<Level, string> = { good: "Good", watch: "Watch", alert: "Alert", none: "No data" };
+const mk = (level: Level, text: string): Status => ({ level, label: LEVEL_LABEL[level], text });
+const pendingStatus = (label: string): Status => ({ level: "none", label, text: "" });
+
+const MIN_HISTORY = 10; // readings needed before a reading is compared with the area's history
+const sentenceCase = (s: string) => s.charAt(0) + s.slice(1).toLowerCase();
+const monthName = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleString("en-US", { month: "long" });
+const fractionBelow = (values: number[], v: number) => values.filter((x) => x < v).length / values.length;
+
+// What this area normally looks like. Same month in other years when there are at least 2 years of data
+// ("...for July"), otherwise the whole record we have ("...for this area").
+function baseline(data: DayData[], key: MetricKey, date: string): { values: number[]; where: string } | null {
+  const others = data.filter((d) => d.date !== date && d[key] != null);
+  const month = date.slice(5, 7);
+  const sameMonth = others.filter((d) => d.date.slice(5, 7) === month);
+  const years = new Set(sameMonth.map((d) => d.date.slice(0, 4)));
+  if (years.size >= 2 && sameMonth.length >= MIN_HISTORY) {
+    return { values: sameMonth.map((d) => d[key] as number), where: `for ${monthName(date)}` };
+  }
+  if (others.length >= MIN_HISTORY) return { values: others.map((d) => d[key] as number), where: "for this area" };
+  return null;
+}
+
+// Compares one reading with the area's own history. The limits below are PLACEHOLDERS:
+// check and change them with a local agronomist.
+function interpret(
+  key: MetricKey,
+  data: DayData[] | null,
+  date: string | null,
+  v: number | null | undefined,
+  monthly: boolean,
+): Status {
+  if (v == null) return mk("none", "No reading for this day.");
+  if (!data || !date) return mk("none", "Waiting for this farm's history.");
+  const base = baseline(data, key, date);
+  const rank = base ? fractionBelow(base.values, v) : null; // 0 = lowest ever seen, 1 = highest
+  const where = base ? base.where : "for this area";
+
+  if (key === "temperature") {
+    if (v >= 35) return mk("alert", "Very hot. Heat can stress rice, especially when it flowers.");
+    if (rank !== null && rank >= 0.9) return mk("watch", `Hotter than usual ${where}.`);
+    if (v >= 33) return mk("watch", "Hot. Watch the crop for heat stress.");
+    if (rank !== null && rank <= 0.1) return mk("watch", `Cooler than usual ${where}.`);
+    return mk("good", rank !== null ? `Normal temperature ${where}.` : "No unusual heat.");
+  }
+
+  if (key === "precipitation") {
+    const i = data.findIndex((d) => d.date === date);
+    const recent = !monthly && i >= 0 ? data.slice(Math.max(0, i - 13), i + 1) : [];
+    const total = recent.reduce((sum, d) => sum + (d.precipitation ?? 0), 0);
+    const haveTwoWeeks = recent.length >= 10;
+    if (v >= 50) return mk("alert", "Very heavy rain. Fields may flood.");
+    if (haveTwoWeeks && total < 5) return mk("alert", `Very little rain: ${total.toFixed(1)} mm in 14 days. Crops may need water.`);
+    if (v >= 25) return mk("watch", "Heavy rain. Check that fields can drain.");
+    if (rank !== null && rank >= 0.9 && v >= 10) return mk("watch", `Heavier rain than usual ${where}.`);
+    if (haveTwoWeeks && total < 10) return mk("watch", `Dry spell: ${total.toFixed(1)} mm in the last 14 days.`);
+    return mk("good", rank !== null ? `Rain is normal ${where}.` : "No unusual rain.");
+  }
+
+  // soil moisture
+  const pct = v <= 1 ? v * 100 : v;
+  if (rank === null) return pct < 15 ? mk("watch", "The soil looks dry.") : mk("none", "Not enough history yet to compare.");
+  if (rank <= 0.1) return mk("alert", `Much drier than usual ${where}. Crops may need water.`);
+  if (rank <= 0.25) return mk("watch", `Drier than usual ${where}.`);
+  if (rank >= 0.95) return mk("watch", `Much wetter than usual ${where}. Fields may be waterlogged.`);
+  return mk("good", `Soil moisture is normal ${where}.`);
+}
+
+/* ---------- friendly loading and error messages ---------- */
+
+// Turns a technical error into a short message a farmer can act on.
+function friendlyError(raw: string | null | undefined): string {
+  const m = (raw ?? "").toLowerCase();
+  if (m.includes("heat map")) return "The map layer for this day couldn't be loaded.";
+  if (!m || m.includes("failed to fetch") || m.includes("networkerror") || m.includes("load failed") || m.includes("econnrefused") || /\b(502|503|504)\b/.test(m)) {
+    return "We can't reach the data service right now. Check your internet connection and try again.";
+  }
+  return "Something went wrong while loading the data. Please try again.";
+}
+
+// "just now", "5 min ago", "3 h ago", or the date for anything older.
+function agoText(ts: number): string {
+  const mins = Math.round((Date.now() - ts) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs} h ago`;
+  return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+// A short message with a Try again button, and when the numbers were last loaded (if they ever were).
+function DataNotice({ message, onRetry, loadedAt }: { message: string; onRetry?: () => void; loadedAt?: number | null }) {
+  return (
+    <div className="data-notice" role="alert">
+      <div className="data-notice-text">
+        <b>{message}</b>
+        {loadedAt != null && <span>Last updated {agoText(loadedAt)}.</span>}
+      </div>
+      {onRetry && (
+        <button className="data-notice-retry" onClick={onRetry}>
+          Try again
+        </button>
+      )}
+    </div>
+  );
+}
+
+function LoadingNote({ text }: { text: string }) {
+  return (
+    <p className="data-loading" role="status">
+      <span className="spinner" aria-hidden="true" />
+      {text}
+    </p>
+  );
 }
 
 // ---- water check -------------------------------------------------------------------
@@ -516,6 +692,96 @@ async function reverseGeocode(lat: number, lng: number, signal: AbortSignal): Pr
 }
 
 /* ---------- map layers ---------- */
+
+// Colour bar with numbers, shown over the map while a layer is selected.
+function MapLegend({ layer }: { layer: MetricKey }) {
+  const s = LEGENDS[layer];
+  const mid = (s.min + s.max) / 2;
+  const top = `${s.max}${s.openEnd ? "+" : ""}`;
+  return (
+    <div
+      className="map-legend"
+      role="img"
+      aria-label={`${s.title} colour scale, ${s.min} to ${top} ${s.unit}. ${s.low} on the left, ${s.high} on the right.`}
+    >
+      <div className="legend-title">
+        <b>{s.title}</b>
+        <span>{s.unit}</span>
+        <em>
+          {s.low} → {s.high}
+        </em>
+      </div>
+      <div className="legend-bar" style={{ background: `linear-gradient(90deg, ${s.stops.join(", ")})` }} />
+      <div className="legend-nums" aria-hidden="true">
+        <span>{s.min}</span>
+        <span>{mid}</span>
+        <span>{top}</span>
+      </div>
+    </div>
+  );
+}
+
+// Day picker that floats over the map, with the colour scale of the selected layer under it.
+function MapTimeline({
+  dates,
+  day,
+  onDay,
+  layer,
+  monthly,
+}: {
+  dates: string[];
+  day: number;
+  onDay: (i: number) => void;
+  layer: MetricKey | null;
+  monthly: boolean;
+}) {
+  const last = dates.length - 1;
+  const idx = Math.min(day, last);
+  const date = dates[idx];
+  const behind = Math.round(
+    (new Date(`${dates[last]}T00:00:00`).getTime() - new Date(`${date}T00:00:00`).getTime()) / 86400000,
+  );
+  const sub = monthly
+    ? "Monthly average"
+    : idx === last
+      ? "Latest data"
+      : Number.isFinite(behind)
+        ? `${behind} day${behind === 1 ? "" : "s"} before the latest`
+        : `Day ${idx + 1} of ${dates.length}`;
+  return (
+    <div className="map-timeline" role="group" aria-label="Choose a day">
+      <div className="tl-head">
+        <button type="button" className="tl-step" aria-label="Previous day" disabled={idx <= 0} onClick={() => onDay(idx - 1)}>
+          ‹
+        </button>
+        <div className="tl-date" aria-live="polite">
+          {shortDate(date)}
+          <small>{sub}</small>
+        </div>
+        {idx < last && (
+          <button type="button" className="tl-latest" onClick={() => onDay(last)}>
+            Latest
+          </button>
+        )}
+        <button type="button" className="tl-step" aria-label="Next day" disabled={idx >= last} onClick={() => onDay(idx + 1)}>
+          ›
+        </button>
+      </div>
+      <input
+        className="tl-range"
+        type="range"
+        min={0}
+        max={last}
+        value={idx}
+        aria-label="Day"
+        aria-valuetext={shortDate(date)}
+        style={{ "--pct": `${(idx / (last || 1)) * 100}%` } as React.CSSProperties}
+        onChange={(e) => onDay(Number(e.target.value))}
+      />
+      {layer && <MapLegend layer={layer} />}
+    </div>
+  );
+}
 
 function DrawLayer({
   poly,
@@ -1245,6 +1511,8 @@ function SetupForm({
   pendingOutline,
   onOutlineApplied,
   focusPlotId,
+  onShowUndo,
+  onClearUndo,
 }: {
   farm: Farm;
   place: string | null;
@@ -1255,6 +1523,8 @@ function SetupForm({
   pendingOutline: { plotId: string; points: LatLng[] } | null; // an outline just drawn on the map
   onOutlineApplied: () => void;
   focusPlotId: string | null; // the plot whose tab should be open (the one tapped on the map)
+  onShowUndo: (kind: "plot", message: string, undo: () => void) => void; // shows "Deleted. Undo"
+  onClearUndo: (kind: "plot") => void; // this form is closing, so its undo no longer applies
 }) {
   const [name, setName] = useState(farm.name);
   const [location, setLocation] = useState(farm.location ?? place ?? "");
@@ -1274,6 +1544,9 @@ function SetupForm({
   }, [focusPlotId]);
   const [step, setStep] = useState<1 | 2>(1); // 1 = plots and crop records, 2 = soil characteristics
   const formRef = useRef<HTMLFormElement>(null);
+
+  // Once this form closes, an "Undo" for a deleted plot would have nothing to restore into.
+  useEffect(() => () => onClearUndo("plot"), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The place name arrives a moment after the outline is closed; fill it in unless the user already typed.
   useEffect(() => {
@@ -1334,15 +1607,22 @@ function SetupForm({
     setPlots((prev) => [...prev, newPlot()]);
     setActive(plots.length);
   }
+  // No "are you sure?": the plot goes right away and "Deleted. Undo" brings it back, crop records included.
   function removePlot() {
     if (plots.length < 2) return;
-    if (
-      plot.cropRecords.some((x) => !recordBlank(x)) &&
-      !window.confirm(`Remove ${plotLabel(plot, plotIndex)} and its crop records?`)
-    )
-      return;
-    setPlots((prev) => prev.filter((p) => p !== plot));
-    setActive(Math.max(0, plotIndex - 1));
+    const removed = plot;
+    const at = plotIndex;
+    setPlots((prev) => prev.filter((p) => p.id !== removed.id));
+    setActive(Math.max(0, at - 1));
+    onShowUndo("plot", `${plotLabel(removed, at)} deleted.`, () => {
+      setPlots((prev) => {
+        if (prev.some((p) => p.id === removed.id)) return prev;
+        const next = [...prev];
+        next.splice(Math.min(at, next.length), 0, removed);
+        return next;
+      });
+      setActive(at);
+    });
   }
 
   // Computed from the outline, never typed in.
@@ -1774,6 +2054,57 @@ function SetupForm({
 
 /* ---------- main screen ---------- */
 
+// Makes the browser Back button close the top-most open layer (the menu first, then the sheet).
+// `depth` = how many layers are open. Each opened layer adds one history entry, and Back closes one.
+// When a layer is closed by tapping, its entries are removed again so Back does not feel stuck.
+function useBackToClose(depth: number, closeTop: () => void) {
+  const pushed = useRef(0); // history entries added by this hook that are still on the stack
+  const ignore = useRef(0); // popstate events caused by our own history.go()
+  const closeRef = useRef(closeTop);
+  closeRef.current = closeTop;
+
+  useEffect(() => {
+    while (pushed.current < depth) {
+      pushed.current += 1;
+      history.pushState({ oryzonLayer: pushed.current }, "");
+    }
+    if (pushed.current > depth) {
+      const extra = pushed.current - depth;
+      pushed.current = depth;
+      ignore.current += 1;
+      history.go(-extra);
+    }
+  }, [depth]);
+
+  useEffect(() => {
+    const onPop = (e: PopStateEvent) => {
+      if (ignore.current > 0) {
+        ignore.current -= 1;
+        return;
+      }
+      if (pushed.current > 0) {
+        pushed.current -= 1;
+        closeRef.current();
+      } else if (e.state && typeof e.state === "object" && "oryzonLayer" in e.state) {
+        history.back(); // an entry left over from before a page reload: skip it
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+}
+
+// "Deleted. Undo" message at the bottom of the screen.
+interface UndoItem {
+  kind: "farm" | "plot";
+  message: string;
+  undo: () => void;
+}
+const UNDO_MS = 7000;
+const SHEET_ORDER = ["peek", "half", "full"] as const;
+const TILE_LABEL: Record<MetricKey, string> = { temperature: "Temp", soilMoisture: "Soil", precipitation: "Rain" };
+const STATUS_GLYPH: Record<Level, string> = { good: "✓", watch: "!", alert: "▲", none: "–" };
+
 export function FarmMap({ onBack }: { onBack?: () => void }) {
   // Farms saved on earlier visits (empty the first time).
   const [initial] = useState(loadStore);
@@ -1812,8 +2143,17 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
   const [sheetView, setSheetView] = useState<"dashboard" | "condition" | "farms" | "setup">("dashboard");
   // the "My Farms" drop-down in the menu
   const [farmsOpen, setFarmsOpen] = useState(false);
-  // the farm in the menu that is waiting for "Delete?" confirmation
-  const [confirmId, setConfirmId] = useState<string | null>(null);
+  // the "Deleted. Undo" message, and the timer that hides it
+  const [undoItem, setUndoItem] = useState<UndoItem | null>(null);
+  const undoTimer = useRef<number | undefined>(undefined);
+  // which reading's details are open over the map (null = just the small tiles)
+  const [openMetric, setOpenMetric] = useState<MetricKey | null>(null);
+  // dragging the sheet handle
+  const appRef = useRef<HTMLDivElement>(null);
+  const sheetRef = useRef<HTMLElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<{ startY: number; startH: number; lastY: number; lastT: number; v: number; moved: boolean } | null>(null);
+  const suppressClick = useRef(false); // a drag must not also count as a tap on the handle
 
   // Plot outlines: the plots as the Set up form currently has them, the outline being drawn on the map,
   // and a finished outline waiting to be handed back to the form.
@@ -1832,6 +2172,13 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
   const [grid, setGrid] = useState<{ layer: MetricKey; points: GridPoint[] } | null>(null);
   const [imageDate, setImageDate] = useState<string | null>(null); // the day whose image we actually request
   const [gridError, setGridError] = useState<string | null>(null);
+  // bump these to load again after a failure ("Try again")
+  const [regionTry, setRegionTry] = useState(0);
+  const [metaTry, setMetaTry] = useState(0);
+  const [overlayTry, setOverlayTry] = useState(0);
+  const [layerBusy, setLayerBusy] = useState(false); // the heat map image is still being fetched
+  // when the farm's numbers were last loaded, and for which outline
+  const [lastUpdated, setLastUpdated] = useState<{ key: string; at: number } | null>(null);
   const cache = useRef<Record<string, GridPoint[]>>({}); // key: "layer:date"
 
   const dataLayer = isMetric(layer) ? layer : null;
@@ -1892,11 +2239,6 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
     setDrawError(null);
   }, [poly.points.length]);
 
-  // Forget any pending "Delete?" question when the menu closes.
-  useEffect(() => {
-    if (!menuOpen) setConfirmId(null);
-  }, [menuOpen]);
-
   // Close the slide-out menu with the Esc key.
   useEffect(() => {
     if (!menuOpen) return;
@@ -1907,11 +2249,20 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [menuOpen]);
 
-  // Load each layer's dates and the corners its heat map image is pinned to, once.
+  // The browser Back button closes the menu first, then the bottom sheet.
+  useBackToClose((menuOpen ? 1 : 0) + (sheet !== "peek" ? 1 : 0), () => {
+    if (menuOpen) setMenuOpen(false);
+    else setSheet("peek");
+  });
+
+  // Stop the undo timer if the screen goes away.
+  useEffect(() => () => window.clearTimeout(undoTimer.current), []);
+
+  // Load each layer's dates and the corners its heat map image is pinned to (again after "Try again").
   useEffect(() => {
     const controller = new AbortController();
     const onError = (e: Error) => {
-      if (e.name !== "AbortError") setGridError(e.message);
+      if (e.name !== "AbortError") setGridError(e.message || "Request failed");
     };
     METRICS.forEach((m) => {
       fetchMeta(m.key, controller.signal)
@@ -1922,7 +2273,7 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
         .catch(onError);
     });
     return () => controller.abort();
-  }, []);
+  }, [metaTry]);
 
   // Dragging the slider changes `date` many times a second. Wait until it settles for a moment before asking
   // for a new image, so the server isn't asked to draw days you only passed through.
@@ -1932,27 +2283,47 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
       return () => clearTimeout(t);
   }, [date]);
 
-  // Load region data once the shape is closed.
+  // The layer image counts as loading from the moment a layer and day are chosen until it arrives.
+  useEffect(() => {
+    setLayerBusy(!!dataLayer && !!imageDate);
+  }, [dataLayer, imageDate]);
+
+  // Load region data once the shape is closed (and again after "Try again").
   useEffect(() => {
     if (!poly.closed || poly.points.length < 3) {
       setData(null);
       return;
     }
     const controller = new AbortController();
+    const key = poly.points.map((p) => p.join(",")).join(";");
     setLoading(true);
     setError(null);
+    setData(null);
 
     fetchRegionData(toGeoJSONPolygon(poly.points), controller.signal)
-      .then(setData)
+      .then((d) => {
+        setData(d);
+        setLastUpdated({ key, at: Date.now() });
+      })
       .catch((e) => {
-        if (e.name !== "AbortError") setError(e.message);
+        if (e.name !== "AbortError") setError(e.message || "Request failed");
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
 
     return () => controller.abort();
-  }, [poly]);
+  }, [poly, regionTry]);
+
+  // "Try again" buttons.
+  function retryRegion() {
+    setRegionTry((n) => n + 1);
+  }
+  function retryLayers() {
+    setGridError(null);
+    setMetaTry((n) => n + 1);
+    setOverlayTry((n) => n + 1);
+  }
 
   // Name the farm's location from its center point.
   useEffect(() => {
@@ -1981,12 +2352,50 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
     setFitNonce((n) => n + 1);
   }
 
-  // Remove a saved farm. If it was the one on the map, show another one (or go back to the first-visit prompt).
+  // "Deleted. Undo" message. A newer one replaces the older one; it hides itself after a few seconds.
+  function showUndo(kind: UndoItem["kind"], message: string, undo: () => void) {
+    window.clearTimeout(undoTimer.current);
+    setUndoItem({ kind, message, undo });
+    undoTimer.current = window.setTimeout(() => setUndoItem(null), UNDO_MS);
+  }
+  function hideUndo(kind?: UndoItem["kind"]) {
+    setUndoItem((prev) => {
+      if (!prev || (kind && prev.kind !== kind)) return prev;
+      window.clearTimeout(undoTimer.current);
+      return null;
+    });
+  }
+
+  // Put a deleted farm back where it was in the list (and on the map, if it was the one being shown).
+  function restoreFarm(removed: Farm, index: number, wasActive: boolean) {
+    setFarms((prev) => {
+      if (prev.some((f) => f.id === removed.id)) return prev;
+      const next = [...prev];
+      next.splice(Math.min(index, next.length), 0, removed);
+      return next;
+    });
+    if (!wasActive) return;
+    setSelectedPlotId(null);
+    setWelcome(false);
+    setDrawing(false);
+    setActiveId(removed.id);
+    setPolygon({ closed: true, points: removed.points });
+    setSheetView("dashboard");
+    setSheet("half");
+    setFitNonce((n) => n + 1);
+  }
+
+  // Remove a saved farm right away (no question), with "Deleted. Undo".
+  // If it was the one on the map, show another one (or go back to the first-visit prompt).
   function deleteFarm(id: string) {
+    const index = farms.findIndex((f) => f.id === id);
+    if (index < 0) return;
+    const removed = farms[index];
+    const wasActive = id === activeId;
     const remaining = farms.filter((f) => f.id !== id);
     setFarms(remaining);
-    setConfirmId(null);
-    if (id !== activeId) return;
+    showUndo("farm", `${removed.name} deleted.`, () => restoreFarm(removed, index, wasActive));
+    if (!wasActive) return;
     setSelectedPlotId(null);
 
     const next = remaining[0] ?? null;
@@ -1994,6 +2403,7 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
       setActiveId(next.id);
       setPolygon({ closed: true, points: next.points });
       setFitNonce((n) => n + 1);
+      if (sheetView === "condition") setSheetView("dashboard");
     } else {
       setActiveId(null);
       setPolygon(EMPTY);
@@ -2109,6 +2519,62 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
     setSheet("peek");
   }
 
+  // Dragging the handle: the sheet follows the finger, then settles on peek, half or full.
+  function onHandleDown(e: React.PointerEvent<HTMLButtonElement>) {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    const el = sheetRef.current;
+    if (!el) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = {
+      startY: e.clientY,
+      startH: el.getBoundingClientRect().height,
+      lastY: e.clientY,
+      lastT: e.timeStamp,
+      v: 0,
+      moved: false,
+    };
+  }
+  function onHandleMove(e: React.PointerEvent<HTMLButtonElement>) {
+    const d = dragRef.current;
+    const el = sheetRef.current;
+    const app = appRef.current;
+    if (!d || !el || !app) return;
+    const dy = e.clientY - d.startY;
+    if (!d.moved) {
+      if (Math.abs(dy) < 6) return; // still a tap
+      d.moved = true;
+      setDragging(true);
+    }
+    const dt = e.timeStamp - d.lastT;
+    if (dt > 0) d.v = (e.clientY - d.lastY) / dt; // px per ms, negative = moving up
+    d.lastY = e.clientY;
+    d.lastT = e.timeStamp;
+    el.style.height = `${Math.min(app.clientHeight - 100, Math.max(96, d.startH - dy))}px`;
+  }
+  function onHandleUp(e: React.PointerEvent<HTMLButtonElement>) {
+    const d = dragRef.current;
+    dragRef.current = null;
+    const el = sheetRef.current;
+    const app = appRef.current;
+    if (!d || !d.moved || !el || !app) return; // a plain tap is handled by onClick
+    suppressClick.current = true;
+    window.setTimeout(() => (suppressClick.current = false), 350);
+    let next: (typeof SHEET_ORDER)[number];
+    if (e.type === "pointercancel") {
+      next = sheet;
+    } else if (Math.abs(d.v) > 0.5) {
+      // a quick flick moves one step in its direction
+      const i = SHEET_ORDER.indexOf(sheet) + (d.v < 0 ? 1 : -1);
+      next = SHEET_ORDER[Math.min(2, Math.max(0, i))];
+    } else {
+      const f = el.getBoundingClientRect().height / app.clientHeight;
+      next = f < 0.38 ? "peek" : f < 0.75 ? "half" : "full";
+    }
+    el.style.height = "";
+    setDragging(false);
+    setSheet(next);
+  }
+
   const pillText = plotDraw
     ? "Outline your plot on the map"
     : poly.closed
@@ -2118,7 +2584,16 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
   const selectedPlot = shownPlots.find((p) => p.id === selectedPlotId);
   const drawingPlot = plotDraw ? livePlots.find((p) => p.id === plotDraw.plotId) : undefined;
   const drawingPlotLabel = drawingPlot ? plotLabel(drawingPlot, livePlots.indexOf(drawingPlot)) : "the plot";
-  const orderedMetrics = [...METRICS].sort((a, b) => Number(b.key === layer) - Number(a.key === layer));
+  // Undo / Clear bar while outlining the farm (the plot bar has its own).
+  const farmDrawBar = drawing && !poly.closed && !plotDraw;
+  // Readings sit on the map while the sheet is collapsed; when the sheet is open the dashboard shows them.
+  const showConditions = poly.closed && !!activeFarm && sheet === "peek" && sheetView !== "setup" && !plotDraw && !farmDrawBar;
+  // The day picker (with the legend of the selected layer) floats above the sheet.
+  const showTimeline =
+    !!dates && !!date && (poly.closed || !!dataLayer) && !plotDraw && !farmDrawBar && !(selectedPlot && sheetView !== "setup");
+  useEffect(() => {
+    if (!showConditions) setOpenMetric(null);
+  }, [showConditions]);
   const weather = weatherFor(current?.precipitation);
   const dashDate = dashboardDate(date);
   const readings: { key: MetricKey; label: string; icon: string }[] = [
@@ -2126,6 +2601,17 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
     { key: "soilMoisture", label: "SOIL MOISTURE", icon: soilMoistureDashboard },
     { key: "precipitation", label: "PRECIPITATION", icon: precipitationDashboard },
   ];
+  // Good / Watch / Alert for each reading, compared with this area's own history.
+  const statusOf = (key: MetricKey): Status =>
+    loading
+      ? pendingStatus("Loading…")
+      : error && !current
+        ? pendingStatus("Unavailable")
+        : interpret(key, data, date, current?.[key], metas[key]?.period === "month");
+  const polyKey = poly.points.map((p) => p.join(",")).join(";");
+  const loadedAt = lastUpdated && lastUpdated.key === polyKey ? lastUpdated.at : null;
+  // the selected day is more than 30 days ago
+  const stale = !!date && Date.now() - new Date(`${date}T00:00:00`).getTime() > 30 * 86400000;
   const sheetTitle =
     sheetView === "farms" ? "MY FARMS" : sheetView === "setup" ? "SET UP FARM" : sheetView === "dashboard" ? "DASHBOARD" : (activeFarm?.name ?? "Condition").toUpperCase();
   const viewClass = sheetView === "condition" ? "" : sheetView === "setup" ? "setup" : "banner";
@@ -2133,7 +2619,7 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
   const bounds = dataLayer ? heatBounds[dataLayer] : undefined;
 
   return (
-    <div className={`app sheet-${sheet}`}>
+    <div className={`app sheet-${sheet}`} ref={appRef}>
       <MapContainer
         center={startFarm ? centroid(startFarm.points) : START_CENTER}
         zoom={startFarm ? 15 : START_ZOOM}
@@ -2149,13 +2635,19 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
         />
         {heatUrl && bounds && (
           <ImageOverlay
-            key={dataLayer} // a new layer has different corners, so start a fresh overlay
+            key={`${dataLayer}-${overlayTry}`} // a new layer has different corners, so start a fresh overlay
             url={heatUrl}
             bounds={bounds}
             opacity={1}
             eventHandlers={{
-              load: () => setGridError(null),
-              error: () => setGridError("Couldn't load the heat map for this day."),
+              load: () => {
+                setGridError(null);
+                setLayerBusy(false);
+              },
+              error: () => {
+                setGridError("Couldn't load the heat map for this day.");
+                setLayerBusy(false);
+              },
             }}
           />
         )}
@@ -2219,9 +2711,13 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
       {poly.closed && activeFarm && <div className="farm-label">{activeFarm.name}</div>}
 
       {/* checking / water warning */}
-      {checkingArea && <div className="map-toast" role="status">Checking that the area is land…</div>}
+      {checkingArea && (
+        <div className={`map-toast ${farmDrawBar ? "above-bar" : ""}`} role="status">
+          Checking that the area is land…
+        </div>
+      )}
       {drawError && (
-        <div className={`map-toast error ${plotDraw ? "above-bar" : ""}`} role="alert">
+        <div className={`map-toast error ${plotDraw || farmDrawBar ? "above-bar" : ""}`} role="alert">
           <span>{drawError}</span>
           <button aria-label="Dismiss" onClick={() => setDrawError(null)}>×</button>
         </div>
@@ -2235,6 +2731,31 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
           onEdit={openEditDetails}
           onClose={() => setSelectedPlotId(null)}
         />
+      )}
+
+      {/* farm outlining: visible Undo and Clear */}
+      {farmDrawBar && (
+        <div className="plot-bar" role="status">
+          <span>
+            Tap the map to place the corners of your field. Tap the orange first point to finish.
+          </span>
+          <div className="plot-bar-actions">
+            <button
+              type="button"
+              disabled={poly.points.length === 0 || checkingArea}
+              onClick={() => setPolygon((prev) => ({ ...prev, points: prev.points.slice(0, -1) }))}
+            >
+              Undo
+            </button>
+            <button
+              type="button"
+              disabled={poly.points.length === 0 || checkingArea}
+              onClick={() => setPolygon(EMPTY)}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
       )}
 
       {/* plot outlining instructions */}
@@ -2252,12 +2773,112 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
             >
               Undo
             </button>
+            <button
+              type="button"
+              disabled={plotDraw.points.length === 0}
+              onClick={() => setPlotDraw((prev) => (prev ? { ...prev, points: [] } : prev))}
+            >
+              Clear
+            </button>
             <button type="button" onClick={cancelPlotDraw}>
               Cancel
             </button>
           </div>
         </div>
       )}
+
+      {/* day picker and colour scale */}
+      {showTimeline && dates && (
+        <MapTimeline
+          dates={dates}
+          day={day}
+          onDay={setDay}
+          layer={dataLayer}
+          monthly={!!dataLayer && metas[dataLayer]?.period === "month"}
+        />
+      )}
+
+      {/* today's readings, small tiles on the map */}
+      {showConditions && !openMetric && (
+        <div className="conditions" role="group" aria-label="Readings for this day">
+          {readings.map((r) => {
+            const mt = METRICS.find((x) => x.key === r.key)!;
+            const f = formatReading(r.key, current?.[r.key]);
+            const st = statusOf(r.key);
+            return (
+              <button
+                type="button"
+                key={r.key}
+                className={`cond-tile ${layer === r.key ? "layer" : ""}`}
+                style={{ "--accent": mt.color } as React.CSSProperties}
+                aria-label={`${sentenceCase(r.label)}: ${f.value}${f.unit}, ${st.label}. Show details`}
+                onClick={() => setOpenMetric(r.key)}
+              >
+                <span className="cond-name">{TILE_LABEL[r.key]}</span>
+                <span className={`cond-glyph ${st.level}`} aria-hidden="true">
+                  {loading ? <span className="spinner" /> : STATUS_GLYPH[st.level]}
+                </span>
+                <span className="cond-value">
+                  {f.value}
+                  {f.unit && <small>{f.unit}</small>}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* details of one reading */}
+      {showConditions && openMetric && (() => {
+        const mt = METRICS.find((x) => x.key === openMetric)!;
+        const f = formatReading(openMetric, current?.[openMetric]);
+        const st = statusOf(openMetric);
+        return (
+          <div className="cond-pop" role="dialog" aria-label={`${mt.label} details`}>
+            <div className="cond-pop-top">
+              <div className="cond-tabs" role="tablist" aria-label="Reading">
+                {readings.map((r) => {
+                  const x = METRICS.find((q) => q.key === r.key)!;
+                  return (
+                    <button
+                      type="button"
+                      role="tab"
+                      key={r.key}
+                      aria-selected={r.key === openMetric}
+                      className={`cond-tab ${r.key === openMetric ? "on" : ""}`}
+                      style={{ "--accent": x.color } as React.CSSProperties}
+                      onClick={() => setOpenMetric(r.key)}
+                    >
+                      {TILE_LABEL[r.key]}
+                    </button>
+                  );
+                })}
+              </div>
+              <button type="button" className="cond-close" aria-label="Close details" onClick={() => setOpenMetric(null)}>
+                ×
+              </button>
+            </div>
+            <div className="cond-big">
+              <b>
+                {f.value}
+                {f.unit && <small>{f.unit}</small>}
+              </b>
+              <span className={`status-pill ${st.level}`}>{st.label}</span>
+            </div>
+            {loading && <LoadingNote text="Loading satellite data…" />}
+            {error && !current && <DataNotice message={friendlyError(error)} onRetry={retryRegion} loadedAt={loadedAt} />}
+            {st.text && <p className="cond-text">{st.text}</p>}
+            {data && current && <Chart data={data} field={openMetric} index={polyIndex} color={mt.color} />}
+            {openMetric === "precipitation" && advice && <p className="cond-advice">{advice.text}</p>}
+            {current && date && (
+              <p className={`cond-asof ${stale ? "stale" : ""}`}>
+                {mt.label} on {formatDate(date) ?? date}
+                {stale && <>. This is not recent data.</>}
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       {/* layer picker */}
       <div className={`layers ${layersOpen ? "" : "collapsed"}`}>
@@ -2296,7 +2917,7 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
       </div>
 
       {/* bottom sheet */}
-      <section className="sheet" aria-label={sheetTitle.charAt(0) + sheetTitle.slice(1).toLowerCase()}>
+      <section className={`sheet ${dragging ? "dragging" : ""}`} ref={sheetRef} aria-label={sheetTitle.charAt(0) + sheetTitle.slice(1).toLowerCase()}>
         {sheetView === "farms" && (
           <button className="sheet-back" onClick={openDashboardView}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
@@ -2308,7 +2929,14 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
         <button
           className={`sheet-head ${viewClass}`}
           style={sheetView === "setup" && setupBg ? ({ "--setup-bg": `url(${setupBg})` } as React.CSSProperties) : undefined}
-          onClick={() => setSheet((s) => (s === "full" ? "peek" : "full"))}
+          onClick={() => {
+            if (suppressClick.current) return; // this tap was the end of a drag
+            setSheet((s) => (s === "full" ? "peek" : "full"));
+          }}
+          onPointerDown={onHandleDown}
+          onPointerMove={onHandleMove}
+          onPointerUp={onHandleUp}
+          onPointerCancel={onHandleUp}
           aria-expanded={sheet === "full"}
         >
           <span className="sheet-handle" />
@@ -2332,6 +2960,8 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
               onDrawPlot={startPlotDraw}
               pendingOutline={plotOutline}
               onOutlineApplied={() => setPlotOutline(null)}
+              onShowUndo={showUndo}
+              onClearUndo={hideUndo}
             />
           ) : sheetView === "dashboard" || sheetView === "setup" ? (
             <>
@@ -2358,8 +2988,11 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
                     </div>
                   </div>
 
-                  {error && <p className="hint error">Couldn't load data: {error}</p>}
-                  {loading && <p className="hint">Loading satellite data…</p>}
+                  {error && <DataNotice message={friendlyError(error)} onRetry={retryRegion} loadedAt={loadedAt} />}
+                  {loading && <LoadingNote text="Loading satellite data…" />}
+                  {gridError && !dates && (
+                    <DataNotice message={friendlyError(gridError)} onRetry={retryLayers} />
+                  )}
 
                   <div className="dash-metrics">
                     {readings.map((r) => {
@@ -2372,10 +3005,30 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
                             {f.unit && <small>{f.unit}</small>}
                           </b>
                           <span className="dash-label">{r.label}</span>
+                          <span className={`status-pill ${statusOf(r.key).level}`}>{statusOf(r.key).label}</span>
                         </div>
                       );
                     })}
                   </div>
+
+                  {/* what the numbers mean, in plain words */}
+                  <ul className="dash-meanings">
+                    {readings.map((r) => {
+                      const st = statusOf(r.key);
+                      return st.text ? (
+                        <li className={st.level} key={r.key}>
+                          <b>{sentenceCase(r.label)}:</b> {st.text}
+                        </li>
+                      ) : null;
+                    })}
+                  </ul>
+                  {current && date && (
+                    <p className={`dash-asof ${stale ? "stale" : ""}`}>
+                      Data as of {formatDate(date) ?? date}
+                      {loadedAt != null && <> &middot; loaded {agoText(loadedAt)}</>}
+                      {stale && <>. This is not recent data.</>}
+                    </p>
+                  )}
 
                   <button className="dash-details" onClick={() => setSheetView("condition")}>
                     See details
@@ -2445,69 +3098,46 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
                   <b>{value}</b>
                 </div>
               ))}
+              <button type="button" className="farm-delete-btn" onClick={() => deleteFarm(activeFarm.id)}>
+                Delete this farm
+              </button>
             </div>
           )}
-          {gridError && <p className="hint error">{gridError}</p>}
-
-          {/* day slider: drives the map layer, and the farm's values once a shape is drawn */}
-          {dates && date && (
-            <div className="timeline">
-              <label>
-                Day: <b>{date}</b>
-              </label>
-              <input
-                type="range"
-                min={0}
-                max={dates.length - 1}
-                value={Math.min(day, dates.length - 1)}
-                onChange={(e) => setDay(Number(e.target.value))}
-              />
-              <p className="hint">
-                  {dataLayer
-                  ? "Shading is smoothed between grid points. The numbers in your farm card are the real grid values."
-                  : "Pick a layer on the right to show it on the map."}
-              </p>
-              {dataLayer && metas[dataLayer]?.period === "month" && (
-                <p className="hint">Monthly average: every day in a month shows the same value.</p>
-              )}
-            </div>
-          )}
+          {gridError && <DataNotice message={friendlyError(gridError)} onRetry={retryLayers} />}
 
           {!poly.closed && (
             <p className="hint">
               Tap the map to place the corners of your field. Tap a point to delete it. Tap the orange first point to finish.
             </p>
           )}
-          {poly.closed && loading && <p className="hint">Loading satellite data…</p>}
-          {poly.closed && error && <p className="hint error">Couldn't load data: {error}</p>}
+          {poly.closed && loading && <LoadingNote text="Loading satellite data…" />}
+          {poly.closed && error && <DataNotice message={friendlyError(error)} onRetry={retryRegion} loadedAt={loadedAt} />}
           {poly.closed && data && !current && <p className="hint">No farm data for this date.</p>}
 
-          {data && current && advice && (
-            <>
-              <div className={`advice ${advice.level}`}>{advice.text}</div>
-              <p className="hint">
-                Region start: {current.latlong[0].toFixed(3)}, {current.latlong[1].toFixed(3)}
-              </p>
-
-              {orderedMetrics.map((m) => {
-                const value = current[m.key];
-                return (
-                  <div className={`card ${layer === m.key ? "active" : ""}`} key={m.key}>
-                    <div className="row">
-                      <span>{m.label}</span>
-                      <b>{value === null ? "no data" : `${value}${m.unit}`}</b>
-                    </div>
-                    <Chart data={data} field={m.key} index={polyIndex} color={m.color} />
-                  </div>
-                );
-              })}
-              <p className="hint">Averaged over grid points in the area; small areas use the nearest grid point.</p>
-            </>
+          {poly.closed && (
+            <p className="hint">The day slider and today's readings are on the map. Collapse this sheet to see them.</p>
           )}
             </>
           )}
         </div>
       </section>
+
+      {/* shown over the map while a layer is loading, or when it could not be loaded */}
+      {dataLayer && (gridError || layerBusy || !bounds) && (
+        <div className={`map-notice ${showTimeline ? "above-legend" : ""}`} role="status">
+          {gridError ? (
+            <>
+              <span>{friendlyError(gridError)}</span>
+              <button onClick={retryLayers}>Try again</button>
+            </>
+          ) : (
+            <>
+              <span className="spinner" aria-hidden="true" />
+              <span>Loading the {metric?.label.toLowerCase()} layer…</span>
+            </>
+          )}
+        </div>
+      )}
 
       {/* first-visit prompt: no farm yet */}
       {welcome && (
@@ -2564,44 +3194,32 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
             {farmsOpen && (
               <div className="myfarms-list">
                 {farms.length === 0 && <p className="hint">No farms yet.</p>}
-                {farms.map((f) =>
-                  confirmId === f.id ? (
-                    <div className="side-menu-confirm" key={f.id}>
-                      <span>Delete {f.name}?</span>
-                      <button className="confirm-btn cancel" onClick={() => setConfirmId(null)}>
-                        Cancel
-                      </button>
-                      <button className="confirm-btn danger" onClick={() => deleteFarm(f.id)}>
-                        Delete
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="side-menu-row" key={f.id}>
-                      <button
-                        className={`side-menu-item ${f.id === activeId ? "active" : ""}`}
-                        aria-current={f.id === activeId ? "true" : undefined}
-                        tabIndex={menuOpen ? 0 : -1}
-                        onClick={() => selectFarm(f)}
-                      >
-                        {f.name}
-                      </button>
-                      <button
-                        className="side-menu-delete"
-                        aria-label={`Delete ${f.name}`}
-                        tabIndex={menuOpen ? 0 : -1}
-                        onClick={() => setConfirmId(f.id)}
-                      >
-                        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M4 7h16" />
-                          <path d="M10 11v6" />
-                          <path d="M14 11v6" />
-                          <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" />
-                          <path d="M9 7V4h6v3" />
-                        </svg>
-                      </button>
-                    </div>
-                  ),
-                )}
+                {farms.map((f) => (
+                  <div className="side-menu-row" key={f.id}>
+                    <button
+                      className={`side-menu-item ${f.id === activeId ? "active" : ""}`}
+                      aria-current={f.id === activeId ? "true" : undefined}
+                      tabIndex={menuOpen ? 0 : -1}
+                      onClick={() => selectFarm(f)}
+                    >
+                      {f.name}
+                    </button>
+                    <button
+                      className="side-menu-delete"
+                      aria-label={`Delete ${f.name}`}
+                      tabIndex={menuOpen ? 0 : -1}
+                      onClick={() => deleteFarm(f.id)}
+                    >
+                      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 7h16" />
+                        <path d="M10 11v6" />
+                        <path d="M14 11v6" />
+                        <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" />
+                        <path d="M9 7V4h6v3" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -2614,6 +3232,22 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
           </button>
         </div>
       </nav>
+
+      {/* "Deleted. Undo" */}
+      {undoItem && (
+        <div className="undo-toast" role="status">
+          <span>{undoItem.message}</span>
+          <button
+            type="button"
+            onClick={() => {
+              undoItem.undo();
+              hideUndo();
+            }}
+          >
+            Undo
+          </button>
+        </div>
+      )}
     </div>
   );
 }
