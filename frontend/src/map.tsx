@@ -1,9 +1,8 @@
-import { useMemo, useState, SetStateAction, Dispatch } from "react";
+import { useMemo, useEffect, useState, SetStateAction, Dispatch } from "react";
 import { MapContainer, Polygon, TileLayer, Rectangle, CircleMarker, useMapEvents } from "react-leaflet";
 import { MONTHS, getRegionData, getAdvice } from "./fakeData";
 import type { LatLng, MetricKey, MonthData } from "./types";
-
-const HALF = 0.05; // half-size of the selected region in degrees (~10 km box)
+import { fetchRegionData, toGeoJSONPolygon } from "./api";
 
 interface ThePolygon {
   closed: boolean,
@@ -16,15 +15,19 @@ function isClose(a: LatLng, b: LatLng, threshold = 0.002): boolean {
   return Math.hypot(dLat, dLng) <= threshold;
 }
 
-function onAddPoint(setPolygon: Dispatch<SetStateAction<ThePolygon>>, newPoint: LatLng) {
+function onAddPoint(setPolygon: Dispatch<SetStateAction<ThePolygon>>, newPoint: LatLng, zoom: number) {
   setPolygon((prev) => {
+    console.log(`values: ${zoom}`);
     // 1. If already closed, start a fresh polygon with the new click
     if (prev.closed) {
       return { closed: false, points: [newPoint] };
     }
 
     // 2. If we have at least 3 points and clicked near the first point, close it
-    if (prev.points.length >= 3 && isClose(prev.points[0], newPoint, 0.02)) {
+    var baseZoom = 9;
+    var baseThreshold = 0.02;
+    const threshold = baseThreshold * Math.pow(2, baseZoom - zoom);
+    if (prev.points.length >= 3 && isClose(prev.points[0], newPoint, threshold)) {
       return { ...prev, closed: true };
     }
 
@@ -45,7 +48,11 @@ function DrawPolygon(poly: ThePolygon) {
         key={index}
         center={pt}
         radius={5}
-        pathOptions={{ color: "#2e9e5b", fillColor: "#2e9e5b", fillOpacity: 1 }}
+        pathOptions={
+          index === 0
+            ? { color: "#e0773a", fillColor: "#e0773a", fillOpacity: 1 }
+            : { color: "#2e9e5b", fillColor: "#2e9e5b", fillOpacity: 1 }
+        }
       />
     ))}
     {
@@ -56,8 +63,8 @@ function DrawPolygon(poly: ThePolygon) {
 }
 
 
-function ClickToSelect({ onSelect }: { onSelect: (p: LatLng) => void }) {
-  useMapEvents({ click: (e) => onSelect([e.latlng.lat, e.latlng.lng]) });
+function ClickToSelect({ onSelect }: { onSelect: (p: LatLng, zoom: number) => void }) {
+  const map = useMapEvents({ click: (e) => onSelect([e.latlng.lat, e.latlng.lng], map.getZoom()) });
   return null;
 }
 
@@ -90,12 +97,36 @@ const METRICS: { key: MetricKey; label: string; unit: string; color: string }[] 
 ];
 
 export function Map() {
-  const [point, setPoint] = useState<LatLng | null>(null);
+  // const [point, setPoint] = useState<LatLng | null>(null);
   const [month, setMonth] = useState<number>(new Date().getMonth());
-  const data = useMemo(() => (point ? getRegionData(point[0], point[1]) : null), [point]);
+  // const data = useMemo(() => (point ? getRegionData(point[0], point[1]) : null), [point]);
+  const [data, setData] = useState<MonthData[] | null>(null);
   const current = data ? data[month] : null;
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null);
   const advice = current ? getAdvice(current) : null;
   const [poly, setPolygon] = useState<ThePolygon>({ closed: false, points: []});
+  
+
+  // const [polygon, setPolygon] = useState<LatLng[]>([]);   // your existing polygon state
+  // const [data, setData] = useState<MonthData[] | null>(null);
+  // const [loading, setLoading] = useState(false);
+  // const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (poly.points.length < 3) { setData(null); return; }
+
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+
+    fetchRegionData(toGeoJSONPolygon(poly.points), controller.signal)
+      .then(setData)
+      .catch((e) => { if (e.name !== "AbortError") setError(e.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+
+    return () => controller.abort();   // cancels the old request if the polygon changes
+  }, [poly.closed]);
   /**<ClickToSelect onSelect={setPoint} />
   {point && (
     <Rectangle
@@ -112,19 +143,16 @@ export function Map() {
             attribution="&copy; OpenStreetMap contributors"
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          <ClickToSelect onSelect={(newPoint) => onAddPoint(setPolygon, newPoint)} />
-          {
-            DrawPolygon(poly)
-          }
+          <ClickToSelect onSelect={(newPoint, zoom) => onAddPoint(setPolygon, newPoint, zoom)} />
+          { DrawPolygon(poly) }
         </MapContainer>
       </div>
 
       <aside className="panel">
-        {!point || !data || !current || !advice ? (
+        {!data || !current || !advice ? (
           <p className="hint">Click the map to select a region.</p>
         ) : (
           <>
-            <h2>{point[0].toFixed(3)}, {point[1].toFixed(3)}</h2>
             <div className={`advice ${advice.level}`}>{advice.text}</div>
 
             <div className="timeline">

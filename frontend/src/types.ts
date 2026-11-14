@@ -1,11 +1,11 @@
 export type LatLng = [number, number];
 
 export interface MonthData {
-  month: string;
-  ndvi: number;
-  soilMoisture: number;
-  rainfall: number;
-  temperature: number;
+  month: string | null;
+  ndvi: number | null;
+  soilMoisture: number | null;
+  rainfall: number | null;
+  temperature: number | null;
 }
 
 export type MetricKey = Exclude<keyof MonthData, "month">;
