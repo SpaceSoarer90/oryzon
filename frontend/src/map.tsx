@@ -1,82 +1,167 @@
-import { useMemo, useEffect, useState, SetStateAction, Dispatch } from "react";
-import { MapContainer, Polygon, TileLayer, Rectangle, CircleMarker, useMapEvents } from "react-leaflet";
-import { MONTHS, getRegionData, getAdvice } from "./fakeData";
+import { useEffect, useState } from "react";
+import L from "leaflet";
+import {
+  MapContainer,
+  TileLayer,
+  Polygon,
+  Polyline,
+  CircleMarker,
+  Marker,
+  useMap,
+  useMapEvents,
+} from "react-leaflet";
+import { MONTHS, getAdvice } from "./fakeData";
 import type { LatLng, MetricKey, MonthData } from "./types";
 import { fetchRegionData, toGeoJSONPolygon } from "./api";
+import temperatureIcon from "./assets/temperature.png";
+import soilMoistureIcon from "./assets/soil-moisture.png";
+import precipitationIcon from "./assets/precipitation.png";
+import temperatureClicked from "./assets/temperature_clicked.png";
+import soilMoistureClicked from "./assets/soil-moisture_clicked.png";
+import precipitationClicked from "./assets/precipitation_clicked.png";
+
+/* ---------- constants ---------- */
+
+const START_CENTER: LatLng = [16.155, 119.985]; // Alaminos City, Pangasinan
+const START_ZOOM = 16;
+const CLOSE_PX = 24; // tap within this many pixels of the first point to close the shape
+const FARM_NAME = "FARM 1"; // placeholder until farms can be saved
 
 interface ThePolygon {
-  closed: boolean,
-  points: LatLng[]
+  closed: boolean;
+  points: LatLng[];
+}
+const EMPTY: ThePolygon = { closed: false, points: [] };
+
+const METRICS: { key: MetricKey; label: string; unit: string; color: string }[] = [
+  { key: "ndvi", label: "Vegetation (NDVI)", unit: "", color: "#2e9e5b" },
+  { key: "soilMoisture", label: "Soil moisture", unit: " m³/m³", color: "#2f7fd1" },
+  { key: "rainfall", label: "Rainfall", unit: " mm", color: "#6b5bd6" },
+  { key: "temperature", label: "Temperature", unit: " °C", color: "#e0773a" },
+];
+
+// The three layer buttons on the right side of the screen.
+const LAYERS: { key: MetricKey; label: string; icon: string; iconClicked: string }[] = [
+  { key: "temperature", label: "Temperature", icon: temperatureIcon, iconClicked: temperatureClicked },
+  { key: "soilMoisture", label: "Soil Moisture", icon: soilMoistureIcon, iconClicked: soilMoistureClicked },
+  { key: "rainfall", label: "Precipitation", icon: precipitationIcon, iconClicked: precipitationClicked },
+];
+
+const farmIcon = L.divIcon({
+  className: "",
+  html: '<div class="farm-pin">🏠</div>',
+  iconSize: [36, 36],
+  iconAnchor: [18, 18],
+});
+
+/* ---------- helpers ---------- */
+
+function centroid(points: LatLng[]): LatLng {
+  const n = points.length;
+  return [
+    points.reduce((s, p) => s + p[0], 0) / n,
+    points.reduce((s, p) => s + p[1], 0) / n,
+  ];
 }
 
-function isClose(a: LatLng, b: LatLng, threshold = 0.002): boolean {
-  const dLat = a[0] - b[0];
-  const dLng = a[1] - b[1];
-  return Math.hypot(dLat, dLng) <= threshold;
+async function reverseGeocode(lat: number, lng: number, signal: AbortSignal): Promise<string> {
+  const fallback = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  try {
+    const url =
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=16` +
+      `&accept-language=en&lat=${lat}&lon=${lng}`;
+    const res = await fetch(url, { signal });
+    if (!res.ok) return fallback;
+    const json = await res.json();
+    const a = json.address ?? {};
+    const parts = [
+      a.suburb || a.village || a.neighbourhood || a.hamlet,
+      a.city || a.town || a.municipality,
+      a.state || a.province || a.region,
+    ].filter(Boolean);
+    return parts.length ? parts.join(", ") : json.display_name ?? fallback;
+  } catch (e) {
+    if ((e as Error).name === "AbortError") throw e;
+    return fallback;
+  }
 }
 
-function onAddPoint(setPolygon: Dispatch<SetStateAction<ThePolygon>>, newPoint: LatLng, zoom: number) {
-  setPolygon((prev) => {
-    console.log(`values: ${zoom}`);
-    // 1. If already closed, start a fresh polygon with the new click
-    if (prev.closed) {
-      return { closed: false, points: [newPoint] };
-    }
+/* ---------- map layers ---------- */
 
-    // 2. If we have at least 3 points and clicked near the first point, close it
-    var baseZoom = 9;
-    var baseThreshold = 0.02;
-    const threshold = baseThreshold * Math.pow(2, baseZoom - zoom);
-    if (prev.points.length >= 3 && isClose(prev.points[0], newPoint, threshold)) {
-      return { ...prev, closed: true };
-    }
+function DrawLayer({
+  poly,
+  setPolygon,
+  drawing,
+}: {
+  poly: ThePolygon;
+  setPolygon: React.Dispatch<React.SetStateAction<ThePolygon>>;
+  drawing: boolean;
+}) {
+  const map = useMap();
 
-    // 3. Otherwise, add the new point to a new array copy
-    return {
-      ...prev,
-      points: [...prev.points, newPoint],
-    };
-  })
-}
-
-function DrawPolygon(poly: ThePolygon) {
-  
-  return (<>
-
-    {poly.points.map((pt, index) => (
-      <CircleMarker
-        key={index}
-        center={pt}
-        radius={5}
-        pathOptions={
-          index === 0
-            ? { color: "#e0773a", fillColor: "#e0773a", fillOpacity: 1 }
-            : { color: "#2e9e5b", fillColor: "#2e9e5b", fillOpacity: 1 }
+  useMapEvents({
+    click(e) {
+      if (!drawing) return;
+      const pt: LatLng = [e.latlng.lat, e.latlng.lng];
+      setPolygon((prev) => {
+        // Close the shape when the tap lands near the first point (measured in screen pixels,
+        // so it feels the same at every zoom level).
+        if (prev.points.length >= 3) {
+          const first = map.latLngToContainerPoint(prev.points[0]);
+          if (first.distanceTo(e.containerPoint) <= CLOSE_PX) {
+            return { ...prev, closed: true };
+          }
         }
-      />
-    ))}
-    {
-      poly.closed &&
-      <Polygon positions={poly.points} pathOptions={{ color: "#2e9e5b", weight: 2 }} />
-    }
-  </>);
+        return { ...prev, points: [...prev.points, pt] };
+      });
+    },
+  });
+
+  return (
+    <>
+      {poly.closed ? (
+        <Polygon
+          positions={poly.points}
+          pathOptions={{ color: "#7bd88f", weight: 3, fillColor: "#7bd88f", fillOpacity: 0.18 }}
+        />
+      ) : (
+        poly.points.length >= 2 && (
+          <Polyline positions={poly.points} pathOptions={{ color: "#7bd88f", weight: 3 }} />
+        )
+      )}
+
+      {poly.points.map((pt, i) => (
+        <CircleMarker
+          key={i}
+          center={pt}
+          radius={i === 0 && !poly.closed ? 9 : 6}
+          pathOptions={
+            i === 0
+              ? { color: "#fff", weight: 2, fillColor: "#e0773a", fillOpacity: 1 }
+              : { color: "#fff", weight: 2, fillColor: "#2e9e5b", fillOpacity: 1 }
+          }
+        />
+      ))}
+
+      {poly.closed && <Marker position={centroid(poly.points)} icon={farmIcon} interactive={false} />}
+    </>
+  );
 }
 
+/* ---------- small chart ---------- */
 
-function ClickToSelect({ onSelect }: { onSelect: (p: LatLng, zoom: number) => void }) {
-  const map = useMapEvents({ click: (e) => onSelect([e.latlng.lat, e.latlng.lng], map.getZoom()) });
-  return null;
-}
-
-interface ChartProps {
+function Chart({
+  data,
+  field,
+  month,
+  color,
+}: {
   data: MonthData[];
   field: MetricKey;
   month: number;
   color: string;
-}
-
-function Chart({ data, field, month, color }: ChartProps) {
-  const vals = data.map((d) => d[field]);
+}) {
+  const vals = data.map((d) => d[field] ?? 0);
   const min = Math.min(...vals);
   const max = Math.max(...vals);
   const ys = vals.map((v) => 50 - ((v - min) / (max - min || 1)) * 46 - 2);
@@ -89,93 +174,202 @@ function Chart({ data, field, month, color }: ChartProps) {
   );
 }
 
-const METRICS: { key: MetricKey; label: string; unit: string; color: string }[] = [
-  { key: "ndvi", label: "Vegetation (NDVI)", unit: "", color: "#2e9e5b" },
-  { key: "soilMoisture", label: "Soil moisture", unit: " m³/m³", color: "#2f7fd1" },
-  { key: "rainfall", label: "Rainfall", unit: " mm", color: "#6b5bd6" },
-  { key: "temperature", label: "Temperature", unit: " °C", color: "#e0773a" },
-];
+/* ---------- main screen ---------- */
 
-export function Map() {
-  // const [point, setPoint] = useState<LatLng | null>(null);
+export function FarmMap() {
+  const [poly, setPolygon] = useState<ThePolygon>(EMPTY);
+  const [drawing, setDrawing] = useState(true);
   const [month, setMonth] = useState<number>(new Date().getMonth());
-  // const data = useMemo(() => (point ? getRegionData(point[0], point[1]) : null), [point]);
   const [data, setData] = useState<MonthData[] | null>(null);
-  const current = data ? data[month] : null;
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [place, setPlace] = useState<string | null>(null);
+  const [layer, setLayer] = useState<MetricKey>("soilMoisture");
+  const [layersOpen, setLayersOpen] = useState(true);
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  const current = data ? data[month] : null;
   const advice = current ? getAdvice(current) : null;
-  const [poly, setPolygon] = useState<ThePolygon>({ closed: false, points: []});
-  
 
-  // const [polygon, setPolygon] = useState<LatLng[]>([]);   // your existing polygon state
-  // const [data, setData] = useState<MonthData[] | null>(null);
-  // const [loading, setLoading] = useState(false);
-  // const [error, setError] = useState<string | null>(null);
-
+  // Finishing a shape ends drawing and opens the Condition sheet.
   useEffect(() => {
-    if (poly.points.length < 3) { setData(null); return; }
+    if (poly.closed) {
+      setDrawing(false);
+      setSheetOpen(true);
+    }
+  }, [poly.closed]);
 
+  // Load region data once the shape is closed.
+  useEffect(() => {
+    if (!poly.closed || poly.points.length < 3) {
+      setData(null);
+      return;
+    }
     const controller = new AbortController();
     setLoading(true);
     setError(null);
 
     fetchRegionData(toGeoJSONPolygon(poly.points), controller.signal)
       .then(setData)
-      .catch((e) => { if (e.name !== "AbortError") setError(e.message); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      .catch((e) => {
+        if (e.name !== "AbortError") setError(e.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
 
-    return () => controller.abort();   // cancels the old request if the polygon changes
-  }, [poly.closed]);
-  /**<ClickToSelect onSelect={setPoint} />
-  {point && (
-    <Rectangle
-      bounds={[[point[0] - HALF, point[1] - HALF], [point[0] + HALF, point[1] + HALF]]}
-      pathOptions={{ color: "#2e9e5b", weight: 2 }}
-    />
-  )}**/
-      /**<Polygon positions={poly.points} pathOptions={{ color: "#2e9e5b", weight: 2 }} />**/
+    return () => controller.abort();
+  }, [poly]);
+
+  // Name the farm's location from its center point.
+  useEffect(() => {
+    if (!poly.closed) {
+      setPlace(null);
+      return;
+    }
+    const [lat, lng] = centroid(poly.points);
+    const controller = new AbortController();
+    reverseGeocode(lat, lng, controller.signal)
+      .then(setPlace)
+      .catch(() => {});
+    return () => controller.abort();
+  }, [poly]);
+
+  function startNewFarm() {
+    setPolygon(EMPTY);
+    setDrawing(true);
+    setData(null);
+    setError(null);
+    setSheetOpen(false);
+  }
+
+  const pillText = poly.closed ? place ?? "Locating…" : "Outline your farm on the map";
+  const orderedMetrics = [...METRICS].sort((a, b) => Number(b.key === layer) - Number(a.key === layer));
+
   return (
-    <>  
-      <div className="map-wrap">
-        <MapContainer center={[14.6, 121.0]} zoom={9} className="map">
-          <TileLayer
-            attribution="&copy; OpenStreetMap contributors"
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <ClickToSelect onSelect={(newPoint, zoom) => onAddPoint(setPolygon, newPoint, zoom)} />
-          { DrawPolygon(poly) }
-        </MapContainer>
+    <div className={`app ${sheetOpen ? "sheet-open" : ""}`}>
+      <MapContainer
+        center={START_CENTER}
+        zoom={START_ZOOM}
+        maxZoom={19}
+        zoomControl={false}
+        className="map"
+      >
+        <TileLayer
+          attribution="Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics"
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+          maxNativeZoom={18}
+          maxZoom={19}
+        />
+        <DrawLayer poly={poly} setPolygon={setPolygon} drawing={drawing} />
+      </MapContainer>
+
+      {/* top bar */}
+      <div className="topbar">
+        <button className="menu-btn" aria-label="Menu" onClick={() => { /* TODO: open menu */ }}>
+          <span /><span /><span />
+        </button>
+        <div className="place-pill">
+          <span className="place-text">{pillText}</span>
+          <button className="add-btn" aria-label="Add a new farm" onClick={startNewFarm}>+</button>
+        </div>
       </div>
 
-      <aside className="panel">
-        {!data || !current || !advice ? (
-          <p className="hint">Click the map to select a region.</p>
-        ) : (
-          <>
-            <div className={`advice ${advice.level}`}>{advice.text}</div>
+      {poly.closed && <div className="farm-label">{FARM_NAME}</div>}
 
-            <div className="timeline">
-              <label>Timeline: <b>{MONTHS[month]}</b></label>
-              <input
-                type="range" min={0} max={11} value={month}
-                onChange={(e) => setMonth(Number(e.target.value))}
-              />
-            </div>
-
-            {METRICS.map((m) => (
-              <div className="card" key={m.key}>
-                <div className="row">
-                  <span>{m.label}</span>
-                  <b>{current[m.key]}{m.unit}</b>
-                </div>
-                <Chart data={data} field={m.key} month={month} color={m.color} />
+      {/* layer picker */}
+      <div className={`layers ${layersOpen ? "" : "collapsed"}`}>
+        <div className="layers-stack">
+          <button
+            className="layers-toggle"
+            aria-label={layersOpen ? "Hide layers" : "Show layers"}
+            aria-expanded={layersOpen}
+            onClick={() => setLayersOpen((o) => !o)}
+          >
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 8l8 8 8-8" />
+            </svg>
+          </button>
+          {layersOpen &&
+            LAYERS.map((l) => (
+              <div className="layer-row" key={l.key}>
+                <span className="layer-label">{l.label}</span>
+                <button
+                  className={`layer-btn ${layer === l.key ? "active" : ""}`}
+                  aria-label={l.label}
+                  aria-pressed={layer === l.key}
+                  onClick={() => setLayer(l.key)}
+                >
+                  <img
+                    src={layer === l.key ? l.iconClicked : l.icon}
+                    alt=""
+                    draggable={false}
+                  />
+                </button>
               </div>
             ))}
-            <p className="hint">Demo data only. Not real measurements.</p>
-          </>
-        )}
-      </aside>
-     </>
+        </div>
+      </div>
+
+      {/* weather chip */}
+      {current?.temperature != null && (
+        <div className="weather-chip">☀️ {Math.round(current.temperature)}°</div>
+      )}
+
+      {/* bottom sheet */}
+      <section className="sheet" aria-label="Condition">
+        <button
+          className="sheet-head"
+          onClick={() => setSheetOpen((o) => !o)}
+          aria-expanded={sheetOpen}
+        >
+          <span className="sheet-handle" />
+          <span className="sheet-title">CONDITION</span>
+        </button>
+
+        <div className="sheet-body">
+          {!poly.closed && (
+            <p className="hint">
+              Tap the map to place the corners of your field. Tap the orange first point to finish.
+            </p>
+          )}
+          {poly.closed && loading && <p className="hint">Loading satellite data…</p>}
+          {poly.closed && error && <p className="hint error">Couldn't load data: {error}</p>}
+
+          {data && current && advice && (
+            <>
+              <div className={`advice ${advice.level}`}>{advice.text}</div>
+
+              <div className="timeline">
+                <label>
+                  Timeline: <b>{MONTHS[month]}</b>
+                </label>
+                <input
+                  type="range"
+                  min={0}
+                  max={11}
+                  value={month}
+                  onChange={(e) => setMonth(Number(e.target.value))}
+                />
+              </div>
+
+              {orderedMetrics.map((m) => (
+                <div className={`card ${layer === m.key ? "active" : ""}`} key={m.key}>
+                  <div className="row">
+                    <span>{m.label}</span>
+                    <b>
+                      {current[m.key]}
+                      {m.unit}
+                    </b>
+                  </div>
+                  <Chart data={data} field={m.key} month={month} color={m.color} />
+                </div>
+              ))}
+              <p className="hint">Demo data only. Not real measurements.</p>
+            </>
+          )}
+        </div>
+      </section>
+    </div>
   );
 }
