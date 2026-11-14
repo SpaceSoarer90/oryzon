@@ -2,3 +2,5 @@ fastapi
 uvicorn[standard]
 pandas
 shapely>=2
+xarray
+netCDF4

@@ -39,15 +39,17 @@ const EMPTY: ThePolygon = { closed: false, points: [] };
 const METRICS: { key: MetricKey; label: string; unit: string; color: string }[] = [
   { key: "precipitation", label: "Precipitation", unit: " mm/day", color: "#2f7fd1" },
   { key: "temperature", label: "Temperature", unit: " °C", color: "#e0773a" },
+  // Set `unit` from the file (e.g. " m³/m³" if its metadata says so, "" for a plain 0-1 wetness fraction).
+  { key: "soilMoisture", label: "Soil moisture", unit: "", color: "#8a5a2b" },
 ];
 
 // The three layer buttons on the right side of the screen.
-// `available` = the backend has data for it (soil moisture doesn't yet).
-type LayerKey = MetricKey | "soilMoisture";
+// `available` = the backend has data for it. Set it to false to grey a button out.
+type LayerKey = MetricKey;
 
 const LAYERS: { key: LayerKey; label: string; icon: string; iconClicked: string; available: boolean }[] = [
   { key: "temperature", label: "Temperature", icon: temperatureIcon, iconClicked: temperatureClicked, available: true },
-  { key: "soilMoisture", label: "Soil Moisture", icon: soilMoistureIcon, iconClicked: soilMoistureClicked, available: false },
+  { key: "soilMoisture", label: "Soil Moisture", icon: soilMoistureIcon, iconClicked: soilMoistureClicked, available: true },
   { key: "precipitation", label: "Precipitation", icon: precipitationIcon, iconClicked: precipitationClicked, available: true },
 ];
 
@@ -462,6 +464,9 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
                     ? "Loading map layer…"
                     : "Pick a layer on the right to show it on the map."}
               </p>
+              {dataLayer && metas[dataLayer]?.period === "month" && (
+                <p className="hint">Monthly average: every day in a month shows the same value.</p>
+              )}
             </div>
           )}
 

@@ -1,9 +1,9 @@
-"""Field Shift API (CSV version).  Run with:  uvicorn main:app --reload   (http://localhost:8000)
+"""Field Shift API.  Run with:  uvicorn main:app --reload   (http://localhost:8000)
 
-Each dataset (precipitation, temperature, ...) is a "layer" built by the same code.
-To add a new one, add a line to DATASETS below. Nothing else needs to be copied.
+Every dataset (precipitation, temperature, soil moisture, ...) is a "layer" built by the same code.
+To add a new one, add ONE entry to DATASETS below. Nothing else on the backend needs to be copied.
 
-GET  /api/layers                  -> names of the available layers
+GET  /api/layers                  -> layers that loaded, plus the reason for any that failed
 GET  /api/layers/{name}/meta      -> dates, cell size, colour range, bounds for that layer
 GET  /api/layers/{name}/day       -> every grid point for one day (?date=YYYY-MM-DD)
 POST /api/region                  -> daily average over a GeoJSON polygon, all layers together
@@ -14,37 +14,59 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import xarray as xr
 from fastapi import FastAPI, HTTPException
 from shapely import contains_xy
 from shapely.geometry import shape
 
-DATA_DIR = Path(__file__).parent / "data/power_daily/"
+DATA_DIR = Path(__file__).parent / "data/"
 YEAR = 2025                    # only this year is served for now
 MAX_NEAREST_DEG = 1.0          # if no grid point is inside the polygon, use the nearest one only if within this many degrees
-FILL_VALUE = -999              # NASA POWER's "missing" marker; turned into null
+# Values used by data providers to mean "no measurement here" (POWER uses -999, FLDAS uses -9999). Turned into NaN,
+# and finally null in the API. None of our variables can legitimately be this low.
+FILL_VALUES = (-999, -9999)
 
-# Column names shared by all the CSVs
+# NetCDF files from NASA are often GLOBAL. Flattened into a table that is tens of millions of rows, which
+# would exhaust memory. Crop NetCDF layers to the area we care about: (west, south, east, north) in degrees.
+# None = keep everything (only safe for small files).
+BBOX: tuple[float, float, float, float] | None = None
+MAX_NETCDF_CELLS = 30_000_000  # safety stop: refuse to load more than this many values, and say how to fix it
+
+# Column names shared by all the CSV files
 COL_LAT, COL_LON = "LAT", "LON"
 COL_DATE = "DATE"                  # used if present...
 COL_YEAR, COL_DOY = "YEAR", "DOY"  # ...otherwise the date is built from year + day-of-year
 
-# One entry per dataset:  layer name -> file, value column in that file, decimals to round to
+# One entry per dataset. The key is the layer name: it becomes the URL (/api/layers/<name>/...) and the
+# field name in /api/region, so it must match DayData / METRICS in the frontend.
+#   file     path inside DATA_DIR. May contain wildcards ("soil/*.nc4") to read many files as one dataset.
+#   format   "csv" or "netcdf" (.nc / .nc4) - decides which reader is used
+#   column   the CSV column, or the NetCDF variable name, holding the values
+#   decimals how many decimals to round values to in the API
+#   isel     (netcdf, optional) pick one slice of an extra dimension, e.g. {"lev": 0} for the top soil layer
+#   period   (netcdf, optional) "day" (default) or "month". A monthly dataset is spread over the days of each
+#            month (every day shows its month's value), so it fits the same daily slider as everything else.
 DATASETS = {
-    "precipitation": {"file": "PRECTOTCORR_2025.csv", "column": "PRECTOTCORR", "decimals": 2},
-    "temperature":   {"file": "T2M_2025.csv",         "column": "T2M",         "decimals": 1},
+    "precipitation": {"file": "power_daily/PRECTOTCORR_2025.csv", "format": "csv", "column": "PRECTOTCORR", "decimals": 2},
+    "temperature":   {"file": "power_daily/T2M_2025.csv",         "format": "csv", "column": "T2M",         "decimals": 1},
+    # FLDAS monthly soil moisture. It has four depths (SoilMoi00_10cm_tavg, ...10_40cm..., ...40_100cm..., ...100_200cm...);
+    # this is the top 0-10 cm. To serve another depth, add one more entry here with that variable name.
+    # If `file`/`column` are wrong the server still starts, and /api/layers says why.
+    "soilMoisture":  {"file": "fldas_monthly/fldas_monthly_ph_2025.nc4", "format": "netcdf", "column": "SoilMoi00_10cm_tavg",
+                      "decimals": 2, "period": "month"},
 }
 
 
-def load_data(path: Path, value_col: str, name: str) -> pd.DataFrame:
-    """Read one CSV into a tidy table with columns: date, lat, lon, <name>."""
-    if not path.is_file():
-        raise RuntimeError(f"Dataset not found: {path}")
+# ---- Readers: each turns raw files into the same tidy table: date, lat, lon, <layer name> ------------------
 
-    raw = pd.read_csv(path)
+def read_csv(files: list[Path], name: str, cfg: dict) -> pd.DataFrame:
+    """CSV: one row per grid point per day, with YEAR + DOY (or DATE) columns."""
+    column = cfg["column"]
+    raw = pd.concat((pd.read_csv(f) for f in files), ignore_index=True)
 
-    missing = [c for c in (COL_LAT, COL_LON, value_col) if c not in raw.columns]
+    missing = [c for c in (COL_LAT, COL_LON, column) if c not in raw.columns]
     if missing:
-        raise RuntimeError(f"{path.name}: missing columns {missing}. Columns found: {list(raw.columns)}")
+        raise RuntimeError(f"Missing columns {missing}. Columns found: {list(raw.columns)}")
 
     if COL_DATE in raw.columns:
         dates = pd.to_datetime(raw[COL_DATE])
@@ -53,22 +75,136 @@ def load_data(path: Path, value_col: str, name: str) -> pd.DataFrame:
             # year + day-of-year (1..366) -> real date
             dates = pd.to_datetime(raw[COL_YEAR].astype(str), format="%Y") + pd.to_timedelta(raw[COL_DOY] - 1, unit="D")
         except KeyError:
-            raise RuntimeError(
-                f"{path.name}: need a '{COL_DATE}' column or '{COL_YEAR}'/'{COL_DOY}'. Columns found: {list(raw.columns)}"
-            )
+            raise RuntimeError(f"Need a '{COL_DATE}' column or '{COL_YEAR}'/'{COL_DOY}'. Columns found: {list(raw.columns)}")
 
-    df = pd.DataFrame({
-        "date": dates,
-        "lat": raw[COL_LAT],
-        "lon": raw[COL_LON],
-        name: raw[value_col].where(raw[value_col] != FILL_VALUE),  # fill value -> NaN
-    })
+    return pd.DataFrame({"date": dates, "lat": raw[COL_LAT], "lon": raw[COL_LON], name: raw[column]})
+
+
+# NetCDF files name their axes differently from one product to the next. Map the usual alternatives
+# onto the names the rest of the code uses.
+COORD_ALIASES = {
+    "lat": ["latitude", "Latitude", "LAT"],
+    "lon": ["longitude", "Longitude", "LON"],
+    "time": ["TIME", "Time", "date"],
+}
+
+
+def as_text(values) -> list[str]:
+    """Time stamps stored as text may come back as str or bytes; return plain strings."""
+    return [v.decode() if isinstance(v, bytes) else str(v) for v in np.asarray(values).ravel()]
+
+
+def standardize_coords(ds: xr.Dataset, variable: str, filename: str) -> xr.DataArray:
+    """Return `variable` with axes named lat / lon / time, whatever the file called them or however it stored them."""
+    da = ds[variable]
+    for target, aliases in COORD_ALIASES.items():
+        names = [target, *aliases]
+
+        # Case 1: the axis is a proper coordinate (maybe under another name) -> just rename it.
+        src = next((n for n in names if n in da.coords), None)
+        if src:
+            if src != target:
+                da = da.rename({src: target})
+            continue
+
+        # Case 2: the file has "phony" dimensions: lat/lon/time are stored as ordinary 1-D variables and the data
+        # axes are anonymous. The dimension each variable sits on tells us which axis of the data it describes
+        # (so this also copes with files whose axes are in an unusual order, like time/lon/lat).
+        src = next((n for n in names if n in ds.variables and ds[n].ndim == 1 and ds[n].dims[0] in da.dims), None)
+        if src:
+            axis = ds[src].dims[0]
+            da = da.rename({axis: target}).assign_coords({target: ds[src].values})
+
+    absent = [c for c in ("lat", "lon", "time") if c not in da.coords]
+    if absent:
+        raise RuntimeError(f"{filename}: can't find {absent}. Variables in the file: {list(ds.variables)}")
+
+    # Time stamps stored as text ("2025-01") -> real dates
+    if not np.issubdtype(da["time"].dtype, np.datetime64):
+        texts = [t.replace("_", "-").replace("/", "-") for t in as_text(da["time"].values)]
+        try:
+            da = da.assign_coords(time=pd.to_datetime(texts).to_numpy())
+        except ValueError:
+            raise RuntimeError(f"{filename}: can't read the time stamps as dates. First ones: {texts[:3]}")
+
+    if "time" not in da.dims:                 # a file holding a single time step: make time a proper axis
+        da = da.expand_dims("time")
+    return da
+
+
+def read_netcdf(files: list[Path], name: str, cfg: dict) -> pd.DataFrame:
+    """NetCDF (.nc/.nc4): a grid per time step. Cropped, turned into one value per day, then flattened into rows."""
+    variable = cfg["column"]
+    pieces = []
+    for f in files:
+        with xr.open_dataset(f) as ds:
+            if variable not in ds.data_vars:
+                raise RuntimeError(f"{f.name}: no variable '{variable}'. Variables found: {list(ds.data_vars)}")
+            da = standardize_coords(ds, variable, f.name)
+
+            if cfg.get("isel"):                # e.g. choose one soil layer
+                da = da.isel(cfg["isel"])
+            extra = [d for d in da.dims if d not in ("time", "lat", "lon")]
+            if extra:
+                raise RuntimeError(f"{f.name}: '{variable}' has extra dimensions {extra}. "
+                                   f"Choose one slice with e.g. \"isel\": {{\"{extra[0]}\": 0}} in DATASETS.")
+
+            # Shrink BEFORE loading into memory: only our year, and only our area.
+            da = da.sortby("lat").sortby("lon").sortby("time")
+            da = da.sel(time=slice(f"{YEAR}-01-01", f"{YEAR}-12-31"))
+            if BBOX:
+                west, south, east, north = BBOX
+                da = da.sel(lat=slice(south, north), lon=slice(west, east))
+            if da.size > MAX_NETCDF_CELLS:
+                raise RuntimeError(f"{f.name}: {da.size:,} values is too many to load. Set BBOX to crop to your area.")
+            pieces.append(da.load())           # .load() reads the values now, while the file is still open
+
+    da = xr.concat(pieces, dim="time").sortby("time") if len(pieces) > 1 else pieces[0]
+    if da.sizes["time"] == 0:
+        raise RuntimeError(f"No time steps in {YEAR}.")
+
+    if cfg.get("period") == "month":
+        # Monthly data: one value per month. Spread it over the days of that month so the daily slider works.
+        # (Only up to the end of the last month present; we never invent values for months the file lacks.)
+        months = da.indexes["time"].to_period("M").to_timestamp()      # snap stamps to the 1st of their month
+        da = da.assign_coords(time=months)
+        days = pd.date_range(months[0], months[-1] + pd.offsets.MonthEnd(0), freq="D")
+        da = da.reindex(time=days, method="ffill")                     # each day takes the latest month start before it
+    else:
+        # Hourly / 3-hourly / daily data: the app works in days, so average each day.
+        da = da.resample(time="1D").mean()
+
+    df = da.to_dataframe(name=name).reset_index().rename(columns={"time": "date"})
+    return df[["date", "lat", "lon", name]]
+
+
+READERS = {"csv": read_csv, "netcdf": read_netcdf}
+
+
+def load_data(name: str, cfg: dict) -> pd.DataFrame:
+    """Read one dataset with the reader for its format, then apply the clean-up every format shares."""
+    files = sorted(DATA_DIR.glob(cfg["file"]))   # works for a plain file name and for wildcards
+    if not files:
+        raise RuntimeError(f"No files match {DATA_DIR / cfg['file']}")
+    reader = READERS.get(cfg["format"])
+    if reader is None:
+        raise RuntimeError(f"Unknown format '{cfg['format']}'. Use one of {list(READERS)}")
+
+    df = reader(files, name, cfg)
+
+    df[name] = df[name].where(~df[name].isin(FILL_VALUES))    # "missing" markers -> NaN
     years_found = sorted(df["date"].dt.year.unique().tolist())
-    df = df[df["date"].dt.year == YEAR].reset_index(drop=True)
+    df = df[df["date"].dt.year == YEAR]
     if df.empty:
-        raise RuntimeError(f"{path.name}: no rows for YEAR = {YEAR}. Years found: {years_found}")
-    return df
+        raise RuntimeError(f"No rows for YEAR = {YEAR}. Years found in the file(s): {years_found}")
 
+    # Drop grid points that never have a value (e.g. ocean points in a land-only product), so they
+    # don't show up as permanent "no data" dots and can't be picked as the nearest point.
+    has_data = df.groupby(["lat", "lon"])[name].transform("count") > 0
+    return df[has_data].reset_index(drop=True)
+
+
+# ---- Layers: everything precomputed once at startup so each request is just a lookup -------------------
 
 def grid_step(values: pd.Series) -> float | None:
     """Spacing between neighbouring grid lines, in degrees (None if there is only one)."""
@@ -88,8 +224,7 @@ class Layer:
 
 
 def build_layer(name: str, cfg: dict) -> Layer:
-    """Everything precomputed once at startup for one dataset."""
-    df = load_data(DATA_DIR / cfg["file"], cfg["column"], name)
+    df = load_data(name, cfg)
     locations = df[["lat", "lon"]].drop_duplicates().reset_index(drop=True)
     by_date = {
         d: g[["lat", "lon", name]].reset_index(drop=True)
@@ -97,12 +232,14 @@ def build_layer(name: str, cfg: dict) -> Layer:
     }
     meta = {
         "dates": [d.isoformat() for d in sorted(by_date)],
+        "period": cfg.get("period", "day"),   # "month" = each month's value is repeated on all its days
+        # each layer measures its own grid, so datasets at different resolutions can coexist
         "cellSize": {"lat": grid_step(locations["lat"]), "lon": grid_step(locations["lon"])},
         # one colour scale for the whole year, so shading doesn't jump between days
         "range": {
-            "min": float(df[name].min()),
-            "max": float(df[name].max()),
-            "p95": float(df[name].quantile(0.95)),
+            "min": round(float(df[name].min()), 6),
+            "max": round(float(df[name].max()), 6),
+            "p95": round(float(df[name].quantile(0.95)), 6),   # precipitation-like data is skewed; p95 avoids outliers
         },
         "bounds": {
             "west": float(locations["lon"].min()), "east": float(locations["lon"].max()),
@@ -112,7 +249,16 @@ def build_layer(name: str, cfg: dict) -> Layer:
     return Layer(name, cfg["decimals"], df, locations, by_date, meta)
 
 
-LAYERS = {name: build_layer(name, cfg) for name, cfg in DATASETS.items()}
+# A broken dataset (typo in a file name, wrong variable name) must not take the other layers down with it.
+# It is skipped, reported loudly here, and its reason is exposed at /api/layers.
+LAYERS: dict[str, Layer] = {}
+LOAD_ERRORS: dict[str, str] = {}
+for _name, _cfg in DATASETS.items():
+    try:
+        LAYERS[_name] = build_layer(_name, _cfg)
+    except Exception as e:
+        LOAD_ERRORS[_name] = str(e)
+        print(f"WARNING: layer '{_name}' failed to load and is disabled: {e}")
 
 app = FastAPI(title="Field Shift API")
 
@@ -120,9 +266,13 @@ app = FastAPI(title="Field Shift API")
 def get_layer(name: str) -> Layer:
     layer = LAYERS.get(name)
     if layer is None:
+        if name in LOAD_ERRORS:
+            raise HTTPException(503, f"Layer '{name}' failed to load: {LOAD_ERRORS[name]}")
         raise HTTPException(404, f"Unknown layer '{name}'. Available: {list(LAYERS)}")
     return layer
 
+
+# ---- Polygon helpers -----------------------------------------------------------------------------------
 
 def extract_geometry(body: dict) -> dict:
     """Accepts a bare GeoJSON geometry or a Feature (what Leaflet's toGeoJSON() gives)."""
@@ -143,9 +293,10 @@ def first_vertex(geom: dict) -> list[float]:
 def points_for(layer: Layer, poly) -> pd.DataFrame:
     """Rows of the layer for grid points inside the polygon; if none, the single nearest grid point."""
     df = layer.df
+    # Cheap first cut: only rows inside the polygon's bounding rectangle, so the exact test below has less to do.
     minx, miny, maxx, maxy = poly.bounds
     box = df[(df["lon"] >= minx) & (df["lon"] <= maxx) & (df["lat"] >= miny) & (df["lat"] <= maxy)]
-    inside = box[contains_xy(poly, box["lon"], box["lat"])]
+    inside = box[contains_xy(poly, box["lon"], box["lat"])]   # exact point-in-polygon test
     if not inside.empty:
         return inside
 
@@ -158,6 +309,8 @@ def points_for(layer: Layer, poly) -> pd.DataFrame:
     return df[(df["lat"] == nearest["lat"]) & (df["lon"] == nearest["lon"])]
 
 
+# ---- Endpoints -----------------------------------------------------------------------------------------
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -165,7 +318,8 @@ def health():
 
 @app.get("/api/layers")
 def list_layers():
-    return {"layers": list(LAYERS)}
+    """Which layers are usable, and why any are not (handy when a new dataset doesn't show up)."""
+    return {"layers": list(LAYERS), "errors": LOAD_ERRORS}
 
 
 @app.post("/api/region")
@@ -174,7 +328,7 @@ def region(body: dict):
     poly = shape(geom)
     latlong = first_vertex(geom)  # for debugging purposes
 
-    # Daily average over the polygon, separately for each layer
+    # Daily average over the polygon, separately for each layer (each has its own grid)
     series = {}
     for name, layer in LAYERS.items():
         selected = points_for(layer, poly)
@@ -187,9 +341,11 @@ def region(body: dict):
     rows = []
     for d, row in daily.iterrows():
         item = {"date": d.strftime("%Y-%m-%d"), "year": int(d.year), "latlong": latlong}
-        for name, layer in LAYERS.items():
-            v = row.get(name)                      # None if this layer had no data for the area
-            item[name] = None if v is None or pd.isna(v) else round(float(v), layer.decimals)
+        # Every configured layer always gets a field, so the frontend never sees "undefined".
+        # null = this layer failed to load, has no data near the polygon, or is missing that day.
+        for name, cfg in DATASETS.items():
+            v = row.get(name)
+            item[name] = None if v is None or pd.isna(v) else round(float(v), cfg["decimals"])
         rows.append(item)
     return rows
 
@@ -217,7 +373,9 @@ def layer_day(
     if None not in (west, south, east, north):
         grid = grid[(grid["lon"] >= west) & (grid["lon"] <= east) & (grid["lat"] >= south) & (grid["lat"] <= north)]
 
+    # "value" because the layer is already named in the URL
     grid = grid.rename(columns={name: "value"})
-    grid = grid.assign(value=grid["value"].round(layer.decimals))
+    # float64 first: NetCDF data is float32, and rounding that gives values like 0.10999999940395355 in the JSON
+    grid = grid.assign(value=grid["value"].astype("float64").round(layer.decimals))
     points = grid.astype(object).where(grid.notna(), None).to_dict("records")   # NaN -> null
     return {"date": date.isoformat(), "points": points}
