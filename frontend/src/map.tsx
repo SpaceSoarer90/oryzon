@@ -27,13 +27,62 @@ import precipitationClicked from "./assets/precipitation_clicked.png";
 const START_CENTER: LatLng = [16.19, 119.99];
 const START_ZOOM = 11;
 const CLOSE_PX = 24; // tap within this many pixels of the first point to close the shape
-const FARM_NAME = "FARM 1"; // placeholder until farms can be saved
+
+// Finds the logo by file name in src/assets, whatever the extension is (.png, .jpg, .webp, .svg...).
+const logoFiles = import.meta.glob("./assets/logo.*", {
+  eager: true,
+  query: "?url",
+  import: "default",
+}) as Record<string, string>;
+const logo = Object.values(logoFiles)[0] ?? "";
 
 interface ThePolygon {
   closed: boolean;
   points: LatLng[];
 }
 const EMPTY: ThePolygon = { closed: false, points: [] };
+
+// A saved farm (one "map" the user monitors). The list is remembered in this browser.
+interface Farm {
+  id: string;
+  name: string;
+  points: LatLng[];
+}
+interface FarmStore {
+  farms: Farm[];
+  activeId: string | null;
+}
+const FARMS_KEY = "oryzon:farms";
+const LEGACY_KEY = "oryzon:farm"; // an earlier version stored a single outline
+
+const isPoints = (v: unknown): v is LatLng[] =>
+  Array.isArray(v) &&
+  v.length >= 3 &&
+  v.every((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite));
+
+function loadStore(): FarmStore {
+  try {
+    const raw = localStorage.getItem(FARMS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const farms: Farm[] = Array.isArray(parsed?.farms)
+        ? parsed.farms.filter(
+            (f: Farm) => f && typeof f.id === "string" && typeof f.name === "string" && isPoints(f.points),
+          )
+        : [];
+      const activeId = farms.some((f) => f.id === parsed.activeId) ? parsed.activeId : farms[0]?.id ?? null;
+      return { farms, activeId };
+    }
+    const legacy = localStorage.getItem(LEGACY_KEY);
+    if (legacy) {
+      const pts = JSON.parse(legacy);
+      if (isPoints(pts)) return { farms: [{ id: "farm-1", name: "Farm 1", points: pts }], activeId: "farm-1" };
+    }
+  } catch {
+    /* unreadable storage: start with no farms */
+  }
+  return { farms: [], activeId: null };
+}
 
 // Data the backend has. Cards in the Condition sheet, and the layers that can be drawn on the map.
 const METRICS: { key: MetricKey; label: string; unit: string; color: string }[] = [
@@ -182,6 +231,54 @@ function GridLayer({ points, color, unit }: { points: GridPoint[]; color: string
   );
 }
 
+// Zooms the map to the chosen farm whenever `nonce` changes (not on first load).
+function FitFarm({ points, nonce }: { points: LatLng[] | null; nonce: number }) {
+  const map = useMap();
+  useEffect(() => {
+    if (nonce === 0 || !points) return;
+    map.fitBounds(L.latLngBounds(points), {
+      paddingTopLeft: [40, 100],
+      paddingBottomRight: [40, Math.round(window.innerHeight * 0.5)],
+      maxZoom: 17,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nonce]);
+  return null;
+}
+
+// A small, non-interactive satellite picture of one farm (used on the My Farms screen).
+function FarmThumb({ points }: { points: LatLng[] }) {
+  return (
+    <div className="farm-thumb">
+      <MapContainer
+        bounds={L.latLngBounds(points)}
+        boundsOptions={{ padding: [30, 30], maxZoom: 17 }}
+        maxZoom={19}
+        zoomControl={false}
+        attributionControl={false}
+        dragging={false}
+        touchZoom={false}
+        doubleClickZoom={false}
+        scrollWheelZoom={false}
+        boxZoom={false}
+        keyboard={false}
+        className="thumb-map"
+      >
+        <TileLayer
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+          maxNativeZoom={18}
+          maxZoom={19}
+        />
+        <Polygon
+          positions={points}
+          pathOptions={{ color: "#7bd88f", weight: 2, fillColor: "#7bd88f", fillOpacity: 0.15 }}
+        />
+        <Marker position={centroid(points)} icon={farmIcon} interactive={false} />
+      </MapContainer>
+    </div>
+  );
+}
+
 /* ---------- small chart ---------- */
 
 function Chart({
@@ -225,8 +322,21 @@ function Chart({
 /* ---------- main screen ---------- */
 
 export function FarmMap({ onBack }: { onBack?: () => void }) {
-  const [poly, setPolygon] = useState<ThePolygon>(EMPTY);
-  const [drawing, setDrawing] = useState(true);
+  // Farms saved on earlier visits (empty the first time).
+  const [initial] = useState(loadStore);
+  const [farms, setFarms] = useState<Farm[]>(initial.farms);
+  // the farm shown on the map; null while a new one is being outlined
+  const [activeId, setActiveId] = useState<string | null>(initial.activeId);
+  const activeFarm = farms.find((f) => f.id === activeId) ?? null;
+  const [startFarm] = useState(activeFarm);
+  const [poly, setPolygon] = useState<ThePolygon>(
+    startFarm ? { closed: true, points: startFarm.points } : EMPTY,
+  );
+  const [drawing, setDrawing] = useState(false);
+  // bump to zoom the map to the active farm
+  const [fitNonce, setFitNonce] = useState(0);
+  // First visit with no farm: show a prompt asking the user to add one.
+  const [welcome, setWelcome] = useState(initial.farms.length === 0);
   const [data, setData] = useState<DayData[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -236,6 +346,14 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
   const [layersOpen, setLayersOpen] = useState(true);
   // peek = just the "CONDITION" bar, half = partly open, full = covers the whole screen
   const [sheet, setSheet] = useState<"peek" | "half" | "full">("peek");
+  // the slide-out menu on the left
+  const [menuOpen, setMenuOpen] = useState(false);
+  // what the bottom sheet shows: the Condition dashboard, or the My Farms screen
+  const [sheetView, setSheetView] = useState<"condition" | "farms">("condition");
+  // the "My Farms" drop-down in the menu
+  const [farmsOpen, setFarmsOpen] = useState(false);
+  // the farm in the menu that is waiting for "Delete?" confirmation
+  const [confirmId, setConfirmId] = useState<string | null>(null);
 
   // map layer: every grid point, one day at a time
   const [metas, setMetas] = useState<Partial<Record<MetricKey, GridMeta>>>({});
@@ -264,6 +382,42 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
       setSheet("half");
     }
   }, [poly.closed]);
+
+  // A newly finished outline becomes a saved farm ("Farm 1", "Farm 2", ...).
+  useEffect(() => {
+    if (!poly.closed || activeId !== null) return;
+    const id = `farm-${Date.now()}`;
+    setFarms((prev) => {
+      let n = 1;
+      while (prev.some((f) => f.name === `Farm ${n}`)) n++;
+      return [...prev, { id, name: `Farm ${n}`, points: poly.points }];
+    });
+    setActiveId(id);
+  }, [poly, activeId]);
+
+  // Remember the farms in this browser.
+  useEffect(() => {
+    try {
+      localStorage.setItem(FARMS_KEY, JSON.stringify({ farms, activeId }));
+    } catch {
+      /* storage unavailable: farms just won't be remembered */
+    }
+  }, [farms, activeId]);
+
+  // Forget any pending "Delete?" question when the menu closes.
+  useEffect(() => {
+    if (!menuOpen) setConfirmId(null);
+  }, [menuOpen]);
+
+  // Close the slide-out menu with the Esc key.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
 
   // Load each layer's dates, cell size and colour range once.
   useEffect(() => {
@@ -337,7 +491,55 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
     return () => controller.abort();
   }, [poly]);
 
+  // Show a saved farm on the map.
+  function selectFarm(f: Farm) {
+    setMenuOpen(false);
+    setWelcome(false);
+    setDrawing(false);
+    setActiveId(f.id);
+    setPolygon({ closed: true, points: f.points });
+    setSheetView("condition");
+    setSheet("half");
+    setFitNonce((n) => n + 1);
+  }
+
+  // Remove a saved farm. If it was the one on the map, show another one (or go back to the first-visit prompt).
+  function deleteFarm(id: string) {
+    const remaining = farms.filter((f) => f.id !== id);
+    setFarms(remaining);
+    setConfirmId(null);
+    if (id !== activeId) return;
+
+    const next = remaining[0] ?? null;
+    if (next) {
+      setActiveId(next.id);
+      setPolygon({ closed: true, points: next.points });
+      setFitNonce((n) => n + 1);
+    } else {
+      setActiveId(null);
+      setPolygon(EMPTY);
+      setData(null);
+      setError(null);
+      setDrawing(false);
+      setSheetView("condition");
+      setSheet("peek");
+      setMenuOpen(false);
+      setWelcome(true);
+    }
+  }
+
+  // Open the My Farms screen in the bottom sheet.
+  function openFarmsView() {
+    setMenuOpen(false);
+    setSheetView("farms");
+    setSheet("full");
+  }
+
   function startNewFarm() {
+    setSheetView("condition");
+    setMenuOpen(false);
+    setWelcome(false);
+    setActiveId(null);
     setPolygon(EMPTY);
     setDrawing(true);
     setData(null);
@@ -352,8 +554,8 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
   return (
     <div className={`app sheet-${sheet}`}>
       <MapContainer
-        center={START_CENTER}
-        zoom={START_ZOOM}
+        center={startFarm ? centroid(startFarm.points) : START_CENTER}
+        zoom={startFarm ? 15 : START_ZOOM}
         maxZoom={19}
         zoomControl={false}
         className="map"
@@ -366,11 +568,17 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
         />
         {metric && gridShown && <GridLayer points={gridShown} color={metric.color} unit={metric.unit} />}
         <DrawLayer poly={poly} setPolygon={setPolygon} drawing={drawing} />
+        <FitFarm points={activeFarm?.points ?? null} nonce={fitNonce} />
       </MapContainer>
 
       {/* top bar */}
       <div className="topbar">
-        <button className="menu-btn" aria-label="Menu" onClick={() => { /* TODO: open menu */ }}>
+        <button
+          className="menu-btn"
+          aria-label="Menu"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen(true)}
+        >
           <span /><span /><span />
         </button>
         <div className="place-pill">
@@ -387,7 +595,7 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
         </button>
       )}
 
-      {poly.closed && <div className="farm-label">{FARM_NAME}</div>}
+      {poly.closed && activeFarm && <div className="farm-label">{activeFarm.name}</div>}
 
       {/* layer picker */}
       <div className={`layers ${layersOpen ? "" : "collapsed"}`}>
@@ -431,17 +639,35 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
       )}
 
       {/* bottom sheet */}
-      <section className="sheet" aria-label="Condition">
+      <section className="sheet" aria-label={sheetView === "farms" ? "My farms" : "Condition"}>
         <button
-          className="sheet-head"
+          className={`sheet-head ${sheetView === "farms" ? "farms" : ""}`}
           onClick={() => setSheet((s) => (s === "full" ? "peek" : "full"))}
           aria-expanded={sheet === "full"}
         >
           <span className="sheet-handle" />
-          <span className="sheet-title">CONDITION</span>
+          <span className="sheet-title">{sheetView === "farms" ? "MY FARMS" : "CONDITION"}</span>
         </button>
 
-        <div className="sheet-body">
+        <div className={`sheet-body ${sheetView === "farms" ? "farms" : ""}`}>
+          {sheetView === "farms" ? (
+            <div className="farm-grid">
+              {farms.length === 0 && (
+                <p className="hint">No farms yet. Tap + at the top, or open the menu, to add one.</p>
+              )}
+              {farms.map((f) => (
+                <button
+                  key={f.id}
+                  className={`farm-card ${f.id === activeId ? "active" : ""}`}
+                  onClick={() => selectFarm(f)}
+                >
+                  <FarmThumb points={f.points} />
+                  <span className="farm-card-name">{f.name}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <>
           {gridError && <p className="hint error">{gridError}</p>}
 
           {/* day slider: drives the map layer, and the farm's values once a shape is drawn */}
@@ -501,8 +727,108 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
               <p className="hint">Averaged over grid points in the area; small areas use the nearest grid point.</p>
             </>
           )}
+            </>
+          )}
         </div>
       </section>
+
+      {/* first-visit prompt: no farm yet */}
+      {welcome && (
+        <div className="welcome-backdrop">
+          <div className="welcome-card" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
+            <h2 id="welcome-title">Add your first farm</h2>
+            <p>
+              You have no farm selected yet. Tap the button, then tap the map to place the corners of
+              your field. Tap the orange first point to finish.
+            </p>
+            <button className="welcome-btn" onClick={startNewFarm}>
+              Add a new farm
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* slide-out menu (sits above everything else) */}
+      <div
+        className={`menu-backdrop ${menuOpen ? "open" : ""}`}
+        onClick={() => setMenuOpen(false)}
+      />
+      <nav className={`side-menu ${menuOpen ? "open" : ""}`} aria-label="Main menu">
+        <div className="side-menu-header">
+          <img className="side-menu-logo" src={logo} alt="Oryzon" draggable={false} />
+        </div>
+        <div className="side-menu-items">
+          <div className="myfarms">
+            <div className="myfarms-row">
+              <button className="myfarms-main" tabIndex={menuOpen ? 0 : -1} onClick={openFarmsView}>
+                My Farms
+              </button>
+              <button
+                className="myfarms-toggle"
+                aria-label={farmsOpen ? "Hide farm list" : "Show farm list"}
+                aria-expanded={farmsOpen}
+                tabIndex={menuOpen ? 0 : -1}
+                onClick={() => setFarmsOpen((o) => !o)}
+              >
+                <svg className={farmsOpen ? "open" : ""} viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+            </div>
+
+            {farmsOpen && (
+              <div className="myfarms-list">
+                {farms.length === 0 && <p className="hint">No farms yet.</p>}
+                {farms.map((f) =>
+                  confirmId === f.id ? (
+                    <div className="side-menu-confirm" key={f.id}>
+                      <span>Delete {f.name}?</span>
+                      <button className="confirm-btn cancel" onClick={() => setConfirmId(null)}>
+                        Cancel
+                      </button>
+                      <button className="confirm-btn danger" onClick={() => deleteFarm(f.id)}>
+                        Delete
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="side-menu-row" key={f.id}>
+                      <button
+                        className={`side-menu-item ${f.id === activeId ? "active" : ""}`}
+                        aria-current={f.id === activeId ? "true" : undefined}
+                        tabIndex={menuOpen ? 0 : -1}
+                        onClick={() => selectFarm(f)}
+                      >
+                        {f.name}
+                      </button>
+                      <button
+                        className="side-menu-delete"
+                        aria-label={`Delete ${f.name}`}
+                        tabIndex={menuOpen ? 0 : -1}
+                        onClick={() => setConfirmId(f.id)}
+                      >
+                        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M4 7h16" />
+                          <path d="M10 11v6" />
+                          <path d="M14 11v6" />
+                          <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" />
+                          <path d="M9 7V4h6v3" />
+                        </svg>
+                      </button>
+                    </div>
+                  ),
+                )}
+              </div>
+            )}
+          </div>
+          <button
+            className="side-menu-item add"
+            tabIndex={menuOpen ? 0 : -1}
+            onClick={startNewFarm}
+          >
+            + Add new map
+          </button>
+        </div>
+      </nav>
     </div>
   );
 }

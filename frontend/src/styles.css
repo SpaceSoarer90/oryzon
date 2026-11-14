@@ -2,6 +2,7 @@
   --cream: #ecf3dc;
   --olive: #c5c98f;
   --olive-deep: #a2a85c;
+  --olive-dark: #737a33;
   --gold: #bfa23a;
   --ink: #2b1a0c;
   --muted: #6b7a70;
@@ -245,6 +246,7 @@ body {
   border-radius: 30px 30px 0 0;
   background: var(--cream);
   box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
   transition: height 0.3s ease, width 0.3s ease, bottom 0.3s ease, border-radius 0.3s ease;
 }
 .app.sheet-full .weather-chip,
@@ -338,6 +340,75 @@ body {
   color: #a33a1c;
 }
 
+/* ---------- My Farms screen (in the bottom sheet) ---------- */
+.sheet-head.farms {
+  position: relative;
+  z-index: 0;
+  width: 100%;
+  padding-bottom: 64px;
+  background: var(--olive-dark);
+  color: var(--cream);
+  border-radius: 0 0 50% 50% / 0 0 56px 56px;
+}
+.sheet-head.farms .sheet-handle {
+  background: var(--cream);
+}
+/* the cards overlap the curve of the olive header */
+.sheet-body.farms {
+  position: relative;
+  z-index: 1;
+  margin-top: -44px;
+}
+/* Cards keep a phone-like size (260-340px wide). On a laptop they sit in several columns,
+   so each thumbnail shows the same area instead of zooming in on a huge card. */
+.farm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 340px));
+  justify-content: center;
+  gap: 18px;
+  padding-top: 4px;
+}
+.farm-grid > .hint {
+  grid-column: 1 / -1;
+}
+.farm-card {
+  display: block;
+  width: 100%;
+  padding: 12px 12px 10px;
+  border: 0;
+  border-radius: 24px;
+  background: var(--card);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  color: var(--ink);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+.farm-card.active {
+  box-shadow: 0 0 0 3px rgba(46, 158, 91, 0.45), 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+.farm-card-name {
+  display: block;
+  margin-top: 8px;
+  font-size: 24px;
+  font-weight: 800;
+}
+.farm-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 8 / 5.5;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #1d2a22;
+}
+.thumb-map {
+  position: relative;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 /* ---------- farm pin on the map ---------- */
 .farm-pin {
   width: 36px;
@@ -351,11 +422,285 @@ body {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
 }
 
+/* ---------- first-visit prompt ---------- */
+.welcome-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 1500;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.welcome-card {
+  width: min(100%, 360px);
+  padding: 26px 22px 22px;
+  border-radius: 30px;
+  background: var(--cream);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  text-align: center;
+}
+.welcome-card h2 {
+  margin: 0 0 10px;
+  font-size: 24px;
+  font-weight: 800;
+}
+.welcome-card p {
+  margin: 0 0 20px;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.welcome-btn {
+  width: 100%;
+  height: 52px;
+  border: 0;
+  border-radius: 26px;
+  background: var(--olive-dark);
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.welcome-btn:active {
+  background: var(--olive-deep);
+}
+
+/* ---------- slide-out menu ---------- */
+.menu-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0s linear 0.3s;
+}
+.menu-backdrop.open {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.3s ease;
+}
+.side-menu {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2001;
+  width: min(88%, 380px);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding-bottom: calc(20px + var(--safe-bottom));
+  background: var(--cream);
+  border-radius: 0 30px 30px 0;
+  box-shadow: 6px 0 24px rgba(0, 0, 0, 0.3);
+  transform: translateX(-100%);
+  visibility: hidden;
+  transition: transform 0.3s ease, visibility 0s linear 0.3s;
+}
+.side-menu.open {
+  transform: none;
+  visibility: visible;
+  transition: transform 0.3s ease;
+}
+/* olive header that curves away at the bottom right, like the design */
+.side-menu-header {
+  flex: none;
+  padding: calc(var(--safe-top) + 8px) 8px 40px;
+  background: var(--olive-dark);
+  border-bottom-right-radius: 100% 80%;
+}
+.side-menu-logo {
+  display: block;
+  width: 100%;
+  max-width: 380px;
+  height: auto;
+  /* the logo image has empty space above and below it, so pull that in */
+  margin: -12% auto -12%;
+  user-select: none;
+}
+.side-menu-items {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 20px 0;
+}
+.side-menu-item {
+  flex: none;
+  height: 52px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 26px;
+  background: var(--olive);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.side-menu-item:active {
+  background: var(--olive-deep);
+}
+/* the farm currently shown on the map */
+.side-menu-item.active {
+  background: var(--olive-dark);
+  color: #fff;
+}
+/* "+ Add new map" */
+.side-menu-item.add {
+  background: transparent;
+  border: 2px dashed var(--olive-deep);
+  color: var(--olive-dark);
+}
+.side-menu-item.add:active {
+  background: var(--olive);
+}
+
+/* farm row: name button + trash button */
+.side-menu-row {
+  display: flex;
+  gap: 8px;
+}
+.side-menu-row .side-menu-item {
+  flex: 1;
+  min-width: 0;
+}
+.side-menu-delete {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(163, 58, 28, 0.12);
+  color: #a33a1c;
+  cursor: pointer;
+}
+.side-menu-delete:active {
+  background: rgba(163, 58, 28, 0.25);
+}
+/* "Delete Farm 2?  Cancel  Delete" */
+.side-menu-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 52px;
+  padding: 0 7px 0 18px;
+  border-radius: 26px;
+  background: #fff0dc;
+  color: #8a5200;
+  font-size: 15px;
+  font-weight: 700;
+}
+.side-menu-confirm span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.confirm-btn {
+  flex: none;
+  height: 38px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 19px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.confirm-btn.cancel {
+  background: var(--olive);
+  color: var(--ink);
+}
+.confirm-btn.danger {
+  background: #a33a1c;
+  color: #fff;
+}
+
+/* "My Farms" button with a drop-down arrow */
+.myfarms-row {
+  display: flex;
+  align-items: stretch;
+  height: 52px;
+  border-radius: 26px;
+  background: var(--olive);
+  overflow: hidden;
+}
+.myfarms-main {
+  flex: 1;
+  min-width: 0;
+  padding: 0 22px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.myfarms-toggle {
+  flex: none;
+  width: 58px;
+  border: 0;
+  border-left: 1px solid rgba(43, 26, 12, 0.18);
+  background: none;
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.myfarms-main:active,
+.myfarms-toggle:active {
+  background: var(--olive-deep);
+}
+.myfarms-toggle svg {
+  transition: transform 0.2s ease;
+}
+.myfarms-toggle svg.open {
+  transform: rotate(180deg);
+}
+/* the list of farms under the button */
+.myfarms-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 0 0 14px;
+}
+.myfarms-list .side-menu-item,
+.myfarms-list .side-menu-delete,
+.myfarms-list .side-menu-confirm {
+  height: 46px;
+}
+.myfarms-list .side-menu-delete {
+  width: 46px;
+}
+.myfarms-list .side-menu-item {
+  font-size: 15px;
+}
+.myfarms-list .side-menu-confirm {
+  padding-left: 14px;
+  font-size: 14px;
+}
+.myfarms-list .hint {
+  margin: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sheet,
   .weather-chip,
   .leaflet-control-attribution,
-  .layers-toggle svg {
+  .layers-toggle svg,
+  .menu-backdrop,
+  .myfarms-toggle svg,
+  .side-menu {
     transition: none;
   }
 }
