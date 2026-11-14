@@ -13,7 +13,6 @@ from fastapi import FastAPI, HTTPException
 from shapely import contains_xy
 from shapely.geometry import shape
 
-# ---- Configure these to match your CSV -------------------------------------
 DATA_DIR = Path(__file__).parent / "data/power_daily/"
 DATASET = "PRECTOTCORR_2025"   # a folder of .csv files, or a single file (with or without .csv)
 YEAR = 2025                    # only this year is served for now
@@ -26,7 +25,6 @@ COL_DATE = "DATE"              # used if present...
 COL_YEAR, COL_DOY = "YEAR", "DOY"  # ...otherwise the date is built from year + day-of-year
 
 FILL_VALUE = -999              # NASA POWER's "missing" marker; turned into null
-# -----------------------------------------------------------------------------
 
 
 def load_data() -> pd.DataFrame:
