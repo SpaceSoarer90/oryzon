@@ -6,6 +6,8 @@ To add a new one, add ONE entry to DATASETS below. Nothing else on the backend n
 GET  /api/layers                  -> layers that loaded, plus the reason for any that failed
 GET  /api/layers/{name}/meta      -> dates, cell size, colour range, bounds for that layer
 GET  /api/layers/{name}/day       -> every grid point for one day (?date=YYYY-MM-DD)
+GET  /api/heatmap/{name}/bounds   -> where on the map the heat map image goes
+GET  /api/heatmap/{name}/{date}   -> the heat map for one day, as a transparent PNG
 POST /api/region                  -> daily average over a GeoJSON polygon, all layers together
 """
 from dataclasses import dataclass
@@ -15,9 +17,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import xarray as xr
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from shapely import contains_xy
 from shapely.geometry import shape
+
+from heatmap_service import build_heatmaps
 
 DATA_DIR = Path(__file__).parent / "data/"
 YEAR = 2025                    # only this year is served for now
@@ -46,14 +50,19 @@ COL_YEAR, COL_DOY = "YEAR", "DOY"  # ...otherwise the date is built from year + 
 #   isel     (netcdf, optional) pick one slice of an extra dimension, e.g. {"lev": 0} for the top soil layer
 #   period   (netcdf, optional) "day" (default) or "month". A monthly dataset is spread over the days of each
 #            month (every day shows its month's value), so it fits the same daily slider as everything else.
+#   color    (heat map) colour of the HIGH values;  low_color  colour of the LOW values. Dark = more.
+#   fade     (heat map, optional) 0..1: how much of the low end is see-through. 0 = low values drawn solid,
+#            0.35 (default) = the lowest values fade out so they don't look like white haze over the map.
 DATASETS = {
-    "precipitation": {"file": "power_daily/PRECTOTCORR_2025.csv", "format": "csv", "column": "PRECTOTCORR", "decimals": 2},
-    "temperature":   {"file": "power_daily/T2M_2025.csv",         "format": "csv", "column": "T2M",         "decimals": 1},
+    "precipitation": {"file": "power_daily/PRECTOTCORR_2025.csv", "format": "csv", "column": "PRECTOTCORR", "decimals": 2,
+                      "color": "#0b3d91", "low_color": None},
+    "temperature":   {"file": "power_daily/T2M_2025.csv",         "format": "csv", "column": "T2M",         "decimals": 1,
+                      "color": "#c0392b", "low_color": None},
     # FLDAS monthly soil moisture. It has four depths (SoilMoi00_10cm_tavg, ...10_40cm..., ...40_100cm..., ...100_200cm...);
     # this is the top 0-10 cm. To serve another depth, add one more entry here with that variable name.
     # If `file`/`column` are wrong the server still starts, and /api/layers says why.
     "soilMoisture":  {"file": "fldas_monthly/fldas_monthly_ph_2025.nc4", "format": "netcdf", "column": "SoilMoi00_10cm_tavg",
-                      "decimals": 2, "period": "month"},
+                      "decimals": 2, "period": "month", "color": "#5b3a12", "low_color": None},
 }
 
 
@@ -260,6 +269,9 @@ for _name, _cfg in DATASETS.items():
         LOAD_ERRORS[_name] = str(e)
         print(f"WARNING: layer '{_name}' failed to load and is disabled: {e}")
 
+# Heat map images, built once from the layers above (the data is only read in one place).
+HEATMAPS = build_heatmaps(LAYERS, DATASETS)
+
 app = FastAPI(title="Field Shift API")
 
 
@@ -379,3 +391,37 @@ def layer_day(
     grid = grid.assign(value=grid["value"].astype("float64").round(layer.decimals))
     points = grid.astype(object).where(grid.notna(), None).to_dict("records")   # NaN -> null
     return {"date": date.isoformat(), "points": points}
+
+def get_heatmap(name: str):
+    heat = HEATMAPS.get(name)
+    if heat is None:
+        if name in LOAD_ERRORS:
+            raise HTTPException(503, f"Layer '{name}' failed to load: {LOAD_ERRORS[name]}")
+        raise HTTPException(404, f"No heat map for layer '{name}'. Available: {list(HEATMAPS)}")
+    return heat
+
+
+# IMPORTANT: this route must be declared BEFORE the "{date}" one below. Routes are matched in order, so if
+# "{date}" came first it would swallow ".../bounds" (treating the word "bounds" as a date) and this would never run.
+@app.get("/api/heatmap/{name}/bounds")
+def heatmap_bounds(name: str):
+    """[[south, west], [north, east]]: the corners to pin the image to (Leaflet ImageOverlay bounds)."""
+    return get_heatmap(name).bounds
+
+
+@app.get("/api/heatmap/{name}/{date}")
+def heatmap_png(name: str, date: Date):
+    heat = get_heatmap(name)
+    try:
+        png = heat.render(date)
+    except KeyError:
+        dates = LAYERS[name].meta["dates"]
+        raise HTTPException(404, f"No data for {date}. Available: {dates[0]} to {dates[-1]}")
+
+    return Response(
+        content=png,
+        media_type="image/png",
+        # The server also caches rendered images; this lets the browser reuse them for a few minutes.
+        # Kept short so a restart with new data or new colours isn't hidden behind a day-old cached image.
+        headers={"Cache-Control": "public, max-age=300"},
+    )

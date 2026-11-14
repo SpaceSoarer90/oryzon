@@ -4,3 +4,5 @@ pandas
 shapely>=2
 xarray
 netCDF4
+scipy
+pillow

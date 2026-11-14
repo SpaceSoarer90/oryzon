@@ -37,3 +37,6 @@ export interface GridMeta {
   range: { min: number; max: number; p95: number };       // whole-year range, for the colour scale
   bounds: { west: number; south: number; east: number; north: number };
 }
+
+// [[south, west], [north, east]]: where a heat map image is pinned on the map (Leaflet ImageOverlay bounds)
+export type Bounds = [[number, number], [number, number]];

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import L from "leaflet";
 import {
   MapContainer,
@@ -7,12 +7,12 @@ import {
   Polyline,
   CircleMarker,
   Marker,
-  Tooltip,
   useMap,
   useMapEvents,
+  ImageOverlay,
 } from "react-leaflet";
-import type { Advice, DayData, GridMeta, GridPoint, LatLng, MetricKey } from "./types";
-import { fetchDay, fetchMeta, fetchRegionData, toGeoJSONPolygon } from "./api";
+import type { Advice, Bounds, DayData, GridMeta, LatLng, MetricKey } from "./types";
+import { fetchHeatmapBounds, fetchMeta, fetchRegionData, heatmapUrl, toGeoJSONPolygon } from "./api";
 import temperatureIcon from "./assets/temperature.png";
 import soilMoistureIcon from "./assets/soil-moisture.png";
 import precipitationIcon from "./assets/precipitation.png";
@@ -37,7 +37,7 @@ const EMPTY: ThePolygon = { closed: false, points: [] };
 
 // Data the backend has. Cards in the Condition sheet, and the layers that can be drawn on the map.
 const METRICS: { key: MetricKey; label: string; unit: string; color: string }[] = [
-  { key: "precipitation", label: "Precipitation", unit: " mm/day", color: "#2f7fd1" },
+  { key: "precipitation", label: "Precipitation", unit: " mm", color: "#2f7fd1" },
   { key: "temperature", label: "Temperature", unit: " °C", color: "#e0773a" },
   // Set `unit` from the file (e.g. " m³/m³" if its metadata says so, "" for a plain 0-1 wetness fraction).
   { key: "soilMoisture", label: "Soil moisture", unit: "", color: "#8a5a2b" },
@@ -164,24 +164,6 @@ function DrawLayer({
   );
 }
 
-// One dot per grid point for the selected day and layer (plain dots for now; shading comes next).
-function GridLayer({ points, color, unit }: { points: GridPoint[]; color: string; unit: string }) {
-  return (
-    <>
-      {points.map((p) => (
-        <CircleMarker
-          key={`${p.lat},${p.lon}`}
-          center={[p.lat, p.lon]}
-          radius={4}
-          pathOptions={{ color, weight: 1, fillOpacity: 0.4 }}
-        >
-          <Tooltip>{p.value === null ? "no data" : `${p.value}${unit}`}</Tooltip>
-        </CircleMarker>
-      ))}
-    </>
-  );
-}
-
 /* ---------- small chart ---------- */
 
 function Chart({
@@ -237,15 +219,14 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
   // peek = just the "CONDITION" bar, half = partly open, full = covers the whole screen
   const [sheet, setSheet] = useState<"peek" | "half" | "full">("peek");
 
-  // map layer: every grid point, one day at a time
+  // map layer: a heat map image for the selected layer and day, drawn by the backend
   const [metas, setMetas] = useState<Partial<Record<MetricKey, GridMeta>>>({});
+  const [heatBounds, setHeatBounds] = useState<Partial<Record<MetricKey, Bounds>>>({});
   const [day, setDay] = useState<number>(0); // index into dates
-  const [grid, setGrid] = useState<{ layer: MetricKey; points: GridPoint[] } | null>(null);
+  const [imageDate, setImageDate] = useState<string | null>(null); // the day whose image we actually request
   const [gridError, setGridError] = useState<string | null>(null);
-  const cache = useRef<Record<string, GridPoint[]>>({}); // key: "layer:date"
 
   const dataLayer = isMetric(layer) ? layer : null;
-  const metric = METRICS.find((m) => m.key === dataLayer);
 
   // One shared slider. Its days come from the first layer the backend reports.
   const firstMeta = METRICS.map((m) => metas[m.key]).find((m) => m !== undefined);
@@ -265,41 +246,30 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
     }
   }, [poly.closed]);
 
-  // Load each layer's dates, cell size and colour range once.
+  // Load each layer's dates and the corners its heat map image is pinned to, once.
   useEffect(() => {
     const controller = new AbortController();
+    const onError = (e: Error) => {
+      if (e.name !== "AbortError") setGridError(e.message);
+    };
     METRICS.forEach((m) => {
       fetchMeta(m.key, controller.signal)
         .then((meta) => setMetas((prev) => ({ ...prev, [m.key]: meta })))
-        .catch((e) => {
-          if (e.name !== "AbortError") setGridError(e.message);
-        });
+        .catch(onError);
+      fetchHeatmapBounds(m.key, controller.signal)
+        .then((b) => setHeatBounds((prev) => ({ ...prev, [m.key]: b })))
+        .catch(onError);
     });
     return () => controller.abort();
   }, []);
 
-  // Fetch the grid for the selected layer and day. Cached days are instant; a stale request is cancelled.
+  // Dragging the slider changes `date` many times a second. Wait until it settles for a moment before asking
+  // for a new image, so the server isn't asked to draw days you only passed through.
   useEffect(() => {
-    if (!dataLayer || !date) return;
-    const key = `${dataLayer}:${date}`;
-    const cached = cache.current[key];
-    if (cached) {
-      setGrid({ layer: dataLayer, points: cached });
-      setGridError(null);
-      return;
-    }
-    const controller = new AbortController();
-    fetchDay(dataLayer, date, controller.signal)
-      .then((g) => {
-        cache.current[key] = g.points;
-        setGrid({ layer: dataLayer, points: g.points });
-        setGridError(null);
-      })
-      .catch((e) => {
-        if (e.name !== "AbortError") setGridError(e.message);
-      });
-    return () => controller.abort();
-  }, [dataLayer, date]);
+    if (!date) return;
+    const t = setTimeout(() => setImageDate(date), 120);
+    return () => clearTimeout(t);
+  }, [date]);
 
   // Load region data once the shape is closed.
   useEffect(() => {
@@ -347,7 +317,8 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
 
   const pillText = poly.closed ? place ?? "Locating…" : "Outline your farm on the map";
   const orderedMetrics = [...METRICS].sort((a, b) => Number(b.key === layer) - Number(a.key === layer));
-  const gridShown = grid !== null && grid.layer === dataLayer ? grid.points : null;
+  const heatUrl = dataLayer && imageDate ? heatmapUrl(dataLayer, imageDate) : null;
+  const bounds = dataLayer ? heatBounds[dataLayer] : undefined;
 
   return (
     <div className={`app sheet-${sheet}`}>
@@ -364,7 +335,18 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
           maxNativeZoom={18}
           maxZoom={19}
         />
-        {metric && gridShown && <GridLayer points={gridShown} color={metric.color} unit={metric.unit} />}
+        {heatUrl && bounds && (
+          <ImageOverlay
+            key={dataLayer} // a new layer has different corners, so start a fresh overlay
+            url={heatUrl}
+            bounds={bounds}
+            opacity={1}
+            eventHandlers={{
+              load: () => setGridError(null),
+              error: () => setGridError("Couldn't load the heat map for this day."),
+            }}
+          />
+        )}
         <DrawLayer poly={poly} setPolygon={setPolygon} drawing={drawing} />
       </MapContainer>
 
@@ -458,11 +440,9 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
                 onChange={(e) => setDay(Number(e.target.value))}
               />
               <p className="hint">
-                {gridShown
-                  ? `${gridShown.length} grid points on the map`
-                  : dataLayer
-                    ? "Loading map layer…"
-                    : "Pick a layer on the right to show it on the map."}
+                {dataLayer
+                  ? "Shading is smoothed between grid points. The numbers in your farm card are the real grid values."
+                  : "Pick a layer on the right to show it on the map."}
               </p>
               {dataLayer && metas[dataLayer]?.period === "month" && (
                 <p className="hint">Monthly average: every day in a month shows the same value.</p>

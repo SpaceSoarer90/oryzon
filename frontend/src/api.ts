@@ -1,4 +1,4 @@
-import type { LatLng, DayData, DayGrid, GridMeta, MetricKey } from "./types";
+import type { LatLng, DayData, DayGrid, GridMeta, MetricKey, Bounds } from "./types";
 
 // Leaflet uses [lat, lng]; GeoJSON uses [lng, lat] and the ring must be closed.
 export function toGeoJSONPolygon(points: LatLng[]): GeoJSON.Polygon {
@@ -40,3 +40,11 @@ export const fetchMeta = (layer: MetricKey, signal?: AbortSignal) =>
 
 export const fetchDay = (layer: MetricKey, date: string, signal?: AbortSignal) =>
   getJSON<DayGrid>(`/api/layers/${layer}/day?date=${encodeURIComponent(date)}`, signal);
+
+// Heat map: one transparent PNG per layer per day, drawn by the backend. A relative URL on purpose: it goes through
+// the same dev proxy as the other /api calls, so there is no cross-origin (CORS) problem.
+export const heatmapUrl = (layer: MetricKey, date: string) =>
+  `/api/heatmap/${layer}/${encodeURIComponent(date)}`;
+
+export const fetchHeatmapBounds = (layer: MetricKey, signal?: AbortSignal) =>
+  getJSON<Bounds>(`/api/heatmap/${layer}/bounds`, signal);
