@@ -1,5 +1,5 @@
 import { useMemo, useState, SetStateAction, Dispatch } from "react";
-import { MapContainer, Polygon, TileLayer, Rectangle, useMapEvents } from "react-leaflet";
+import { MapContainer, Polygon, TileLayer, Rectangle, CircleMarker, useMapEvents } from "react-leaflet";
 import { MONTHS, getRegionData, getAdvice } from "./fakeData";
 import type { LatLng, MetricKey, MonthData } from "./types";
 
@@ -16,26 +16,45 @@ function isClose(a: LatLng, b: LatLng, threshold = 0.002): boolean {
   return Math.hypot(dLat, dLng) <= threshold;
 }
 
-function onAddPoint(setPolygon: Dispatch<SetStateAction<ThePolygon>>, poly: ThePolygon, newPoint: LatLng) {
-  setPolygon(() => {
-    var new_poly = poly;
-    if (poly.closed) {
-       // clear 
-       new_poly.closed = false;
-       new_poly.points = [newPoint]
+function onAddPoint(setPolygon: Dispatch<SetStateAction<ThePolygon>>, newPoint: LatLng) {
+  setPolygon((prev) => {
+    // 1. If already closed, start a fresh polygon with the new click
+    if (prev.closed) {
+      return { closed: false, points: [newPoint] };
     }
-    else {
-      const hasNearbyPoint: boolean = new_poly.points.some((pt) => isClose(pt, newPoint));
-      if (hasNearbyPoint) {
-         new_poly.closed = true; 
-      }
-      else {
-        new_poly.points.push(newPoint)
-      }
+
+    // 2. If we have at least 3 points and clicked near the first point, close it
+    if (prev.points.length >= 3 && isClose(prev.points[0], newPoint, 0.02)) {
+      return { ...prev, closed: true };
     }
-    return new_poly
+
+    // 3. Otherwise, add the new point to a new array copy
+    return {
+      ...prev,
+      points: [...prev.points, newPoint],
+    };
   })
 }
+
+function DrawPolygon(poly: ThePolygon) {
+  
+  return (<>
+
+    {poly.points.map((pt, index) => (
+      <CircleMarker
+        key={index}
+        center={pt}
+        radius={5}
+        pathOptions={{ color: "#2e9e5b", fillColor: "#2e9e5b", fillOpacity: 1 }}
+      />
+    ))}
+    {
+      poly.closed &&
+      <Polygon positions={poly.points} pathOptions={{ color: "#2e9e5b", weight: 2 }} />
+    }
+  </>);
+}
+
 
 function ClickToSelect({ onSelect }: { onSelect: (p: LatLng) => void }) {
   useMapEvents({ click: (e) => onSelect([e.latlng.lat, e.latlng.lng]) });
@@ -77,6 +96,14 @@ export function Map() {
   const current = data ? data[month] : null;
   const advice = current ? getAdvice(current) : null;
   const [poly, setPolygon] = useState<ThePolygon>({ closed: false, points: []});
+  /**<ClickToSelect onSelect={setPoint} />
+  {point && (
+    <Rectangle
+      bounds={[[point[0] - HALF, point[1] - HALF], [point[0] + HALF, point[1] + HALF]]}
+      pathOptions={{ color: "#2e9e5b", weight: 2 }}
+    />
+  )}**/
+      /**<Polygon positions={poly.points} pathOptions={{ color: "#2e9e5b", weight: 2 }} />**/
   return (
     <>  
       <div className="map-wrap">
@@ -85,18 +112,10 @@ export function Map() {
             attribution="&copy; OpenStreetMap contributors"
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          <ClickToSelect onSelect={setPoint} />
-          {point && (
-            <Rectangle
-              bounds={[[point[0] - HALF, point[1] - HALF], [point[0] + HALF, point[1] + HALF]]}
-              pathOptions={{ color: "#2e9e5b", weight: 2 }}
-            />
-          )}
-          /**<ClickToSelect onSelect={(newPoint) => onAddPoint(setPolygon, poly, newPoint)} />**/
-          /**{
-            poly.closed &&
-            <Polygon positions={poly.points} pathOptions={{ color: "#2e9e5b", weight: 2 }} />
-          }**/
+          <ClickToSelect onSelect={(newPoint) => onAddPoint(setPolygon, newPoint)} />
+          {
+            DrawPolygon(poly)
+          }
         </MapContainer>
       </div>
 
