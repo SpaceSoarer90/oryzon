@@ -1,3 +1,5 @@
+import { Map } from "./map";
+
 export default function App() {
 
   return (
@@ -6,6 +8,9 @@ export default function App() {
         <h1>🌾 Field Shift</h1>
         <span>Farm decision support</span>
       </header>
+
+      <Map/>
+
     </div>
   );
 }
