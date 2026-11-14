@@ -178,8 +178,7 @@ function Chart({
 
 /* ---------- main screen ---------- */
 
-export function FarmMap() {
-  const [poly, setPolygon] = useState<ThePolygon>(EMPTY);
+export function FarmMap({ onBack }: { onBack?: () => void }) {  const [poly, setPolygon] = useState<ThePolygon>(EMPTY);
   const [drawing, setDrawing] = useState(true);
   const [month, setMonth] = useState<number>(new Date().getMonth());
   const [data, setData] = useState<MonthData[] | null>(null);
@@ -278,6 +277,14 @@ export function FarmMap() {
           <button className="add-btn" aria-label="Add a new farm" onClick={startNewFarm}>+</button>
         </div>
       </div>
+
+      {onBack && (
+        <button className="back-btn" aria-label="Back to home" onClick={onBack}>
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 5l-7 7 7 7" />
+          </svg>
+        </button>
+      )}
 
       {poly.closed && <div className="farm-label">{FARM_NAME}</div>}
 
