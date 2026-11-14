@@ -1,12 +1,15 @@
 export type LatLng = [number, number];
 
+// One day for a farm polygon, from POST /api/region (all layers together)
 export interface DayData {
-  date: string;                  // "2025-05-14"
-  year: number;                  // kept so other years can be added later
-  precipitation: number | null;  // mm/day, null = missing
-  latlong: LatLng;               // first vertex of the polygon
+  date: string;                   // "2025-05-14"
+  year: number;                   // kept so other years can be added later
+  latlong: LatLng;                // first vertex of the polygon (debugging)
+  precipitation: number | null;   // mm/day, null = missing
+  temperature: number | null;     // °C, null = missing
 }
 
+// The data layers the backend serves. Must match the names in DATASETS in main.py.
 export type MetricKey = Exclude<keyof DayData, "date" | "year" | "latlong">;
 
 export interface Advice {
@@ -18,7 +21,7 @@ export interface Advice {
 export interface GridPoint {
   lat: number;
   lon: number;
-  precipitation: number | null;
+  value: number | null;
 }
 
 export interface DayGrid {

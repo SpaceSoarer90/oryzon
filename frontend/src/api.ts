@@ -1,4 +1,4 @@
-import type { LatLng, DayData, DayGrid, GridMeta } from "./types";
+import type { LatLng, DayData, DayGrid, GridMeta, MetricKey } from "./types";
 
 // Leaflet uses [lat, lng]; GeoJSON uses [lng, lat] and the ring must be closed.
 export function toGeoJSONPolygon(points: LatLng[]): GeoJSON.Polygon {
@@ -16,6 +16,7 @@ async function getJSON<T>(url: string, signal?: AbortSignal): Promise<T> {
   return res.json();
 }
 
+// Daily average over a polygon, all layers together
 export async function fetchRegionData(
   polygon: GeoJSON.Polygon,
   signal?: AbortSignal,
@@ -33,7 +34,9 @@ export async function fetchRegionData(
   return res.json();
 }
 
-export const fetchMeta = (signal?: AbortSignal) => getJSON<GridMeta>("/api/precip/meta", signal);
+// Map layers: `layer` is a name from the backend, e.g. "precipitation" or "temperature"
+export const fetchMeta = (layer: MetricKey, signal?: AbortSignal) =>
+  getJSON<GridMeta>(`/api/layers/${layer}/meta`, signal);
 
-export const fetchDay = (date: string, signal?: AbortSignal) =>
-  getJSON<DayGrid>(`/api/precip/day?date=${encodeURIComponent(date)}`, signal);
+export const fetchDay = (layer: MetricKey, date: string, signal?: AbortSignal) =>
+  getJSON<DayGrid>(`/api/layers/${layer}/day?date=${encodeURIComponent(date)}`, signal);
