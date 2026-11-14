@@ -2,6 +2,7 @@
   --cream: #ecf3dc;
   --olive: #c5c98f;
   --olive-deep: #a2a85c;
+  --olive-dark: #737a33;
   --gold: #bfa23a;
   --ink: #2b1a0c;
   --muted: #6b7a70;
@@ -142,6 +143,48 @@ body {
   pointer-events: none;
 }
 
+/* ---------- checking / water warning ---------- */
+.map-toast {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--sheet-h) + 14px);
+  z-index: 1100;
+  max-width: 460px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 18px;
+  background: var(--cream);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.35);
+  transition: bottom 0.3s ease;
+}
+.map-toast.error {
+  background: #fde7df;
+  color: #8c2d12;
+  border: 2px solid #a33a1c;
+}
+.map-toast span {
+  flex: 1;
+}
+.map-toast button {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(163, 58, 28, 0.15);
+  color: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
 /* ---------- layer picker ---------- */
 .layers {
   position: absolute;
@@ -152,9 +195,9 @@ body {
 .layers-stack {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 8px;
-  padding: 4px 8px 8px;
+  padding: 4px 8px 8px 14px;
   border-radius: 22px;
   background: rgba(24, 24, 22, 0.82);
 }
@@ -162,34 +205,44 @@ body {
   padding-bottom: 4px;
 }
 .layers-toggle {
-  width: 46px;
-  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  height: 36px;
+  padding: 0 6px 0 0;
   border: 0;
   background: none;
   color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
   cursor: pointer;
-  display: grid;
-  place-items: center;
 }
-.layers-toggle svg {
+.layers-toggle:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+  border-radius: 14px;
+}
+.layers-chevron {
   transition: transform 0.2s ease;
 }
-.layers.collapsed .layers-toggle svg {
+.layers:not(.collapsed) .layers-chevron {
   transform: rotate(180deg);
 }
 .layer-row {
-  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
 }
 .layer-label {
-  position: absolute;
-  right: calc(100% + 16px);
-  top: 50%;
-  transform: translateY(-50%);
   white-space: nowrap;
   color: #fff;
   font-size: 14px;
   font-weight: 700;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
   pointer-events: none;
 }
 .layer-btn {
@@ -217,20 +270,6 @@ body {
   outline-offset: 2px;
 }
 
-/* ---------- weather chip ---------- */
-.weather-chip {
-  position: absolute;
-  right: 12px;
-  bottom: calc(var(--sheet-h) + 14px);
-  z-index: 1000;
-  padding: 8px 14px;
-  border-radius: 16px;
-  background: rgba(24, 24, 22, 0.85);
-  color: #fff;
-  font-size: 26px;
-  transition: bottom 0.3s ease;
-}
-
 /* ---------- bottom sheet ---------- */
 .sheet {
   position: absolute;
@@ -245,9 +284,9 @@ body {
   border-radius: 30px 30px 0 0;
   background: var(--cream);
   box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
   transition: height 0.3s ease, width 0.3s ease, bottom 0.3s ease, border-radius 0.3s ease;
 }
-.app.sheet-full .weather-chip,
 .app.sheet-full .farm-label {
   display: none;
 }
@@ -271,6 +310,10 @@ body {
   background: var(--ink);
 }
 .sheet-title {
+  max-width: 88%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 30px;
   font-weight: 800;
   line-height: 1.1;
@@ -302,6 +345,201 @@ body {
 .chart {
   width: 100%;
   height: 52px;
+}
+/* ---------- Dashboard: yield, commodities, farm carousel ---------- */
+.dash-panel {
+  max-width: 420px;
+  margin: 18px auto 0;
+  padding: 16px 16px 12px;
+  border-radius: 30px;
+  background: var(--card);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+.dash-panel-title {
+  margin: 0 0 12px;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 800;
+}
+.dash-heading {
+  max-width: 420px;
+  margin: 22px auto 10px;
+  padding: 0 6px;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.yield-chart {
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  grid-template-rows: 170px auto;
+  column-gap: 6px;
+}
+.yield-axis {
+  position: relative;
+}
+.yield-axis span {
+  position: absolute;
+  right: 0;
+  transform: translateY(50%);
+  font-size: 12px;
+  line-height: 1;
+}
+.yield-plot {
+  position: relative;
+}
+.yield-grid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: #e6e8dd;
+}
+.yield-bars {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+.yield-bar {
+  flex: 1;
+  min-width: 0;
+  border-radius: 14px 14px 0 0;
+  transition: height 0.3s ease;
+}
+.yield-xlabels {
+  grid-column: 2;
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+.yield-xlabels span {
+  flex: 1;
+  text-align: center;
+  font-size: 12px;
+}
+.yield-note {
+  margin: 10px 4px 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+.commodities {
+  display: flex;
+  gap: 12px;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 2px 4px 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.commodity {
+  flex: none;
+  width: 76px;
+  height: 76px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: var(--card);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.18);
+  font-size: 38px;
+}
+.commodity img {
+  width: 84%;
+  height: 84%;
+  object-fit: contain;
+}
+.carousel {
+  max-width: 420px;
+  margin: 0 auto;
+}
+.carousel-wrap {
+  position: relative;
+}
+.farm-carousel {
+  display: flex;
+  gap: 14px;
+  padding: 4px 4px 14px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.farm-carousel::-webkit-scrollbar,
+.commodities::-webkit-scrollbar {
+  display: none;
+}
+.farm-card.carousel-card {
+  flex: none;
+  width: clamp(150px, 44%, 220px);
+  scroll-snap-align: start;
+}
+.carousel-card .farm-card-name {
+  font-size: 18px;
+}
+.carousel-next {
+  position: absolute;
+  right: -2px;
+  top: 38%;
+  width: 36px;
+  height: 56px;
+  border: 0;
+  border-radius: 18px 0 0 18px;
+  background: rgba(236, 243, 220, 0.9);
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.carousel-next:focus-visible,
+.carousel-dots button:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
+}
+.carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+.carousel-dots button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.carousel-dots button::after {
+  content: "";
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 2px solid var(--olive-dark);
+  border-radius: 50%;
+}
+.carousel-dots button.on::after {
+  background: var(--olive-dark);
+}
+
+.farm-info h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 800;
+}
+.farm-info .row {
+  gap: 14px;
+}
+.farm-info .row span {
+  flex: none;
+  color: var(--muted);
+}
+.farm-info .row b {
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 .advice {
   padding: 10px 12px;
@@ -338,6 +576,425 @@ body {
   color: #a33a1c;
 }
 
+/* ---------- My Farms screen (in the bottom sheet) ---------- */
+.sheet-head.banner {
+  position: relative;
+  z-index: 0;
+  width: 100%;
+  padding-bottom: 64px;
+  background: var(--olive-dark);
+  color: var(--cream);
+  border-radius: 0 0 50% 50% / 0 0 56px 56px;
+}
+.sheet-head.banner .sheet-handle {
+  background: var(--cream);
+}
+/* the cards overlap the curve of the olive header */
+.sheet-body.banner {
+  position: relative;
+  z-index: 1;
+  margin-top: -44px;
+}
+/* Cards keep a phone-like size (260-340px wide). On a laptop they sit in several columns,
+   so each thumbnail shows the same area instead of zooming in on a huge card. */
+.farm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 340px));
+  justify-content: center;
+  gap: 18px;
+  padding-top: 4px;
+}
+.farm-grid > .hint {
+  grid-column: 1 / -1;
+}
+.farm-card {
+  display: block;
+  width: 100%;
+  padding: 12px 12px 10px;
+  border: 0;
+  border-radius: 24px;
+  background: var(--card);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  color: var(--ink);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+.farm-card.active {
+  box-shadow: 0 0 0 3px rgba(46, 158, 91, 0.45), 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+.farm-card-name {
+  display: block;
+  margin-top: 8px;
+  font-size: 24px;
+  font-weight: 800;
+}
+.farm-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 8 / 5.5;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #1d2a22;
+}
+.thumb-map {
+  position: relative;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* "‹ Dashboard" button at the top-left of the My Farms screen */
+.sheet-back {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  padding: 0 14px 0 8px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--cream);
+  color: var(--olive-dark);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.sheet-back:active {
+  background: var(--olive);
+}
+.sheet-back:focus-visible,
+.dash-details:focus-visible,
+.dash-back-link:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
+}
+
+/* ---------- Dashboard (in the bottom sheet) ---------- */
+.dash-card {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 20px 18px 16px;
+  border-radius: 36px;
+  background: var(--card);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+.dash-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.dash-place {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 22px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.dash-place img {
+  flex: none;
+  width: 30px;
+  height: auto;
+}
+.dash-place span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-date {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dash-date-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+.dash-weather {
+  width: 52px;
+  height: auto;
+  padding-left: 10px;
+  border-left: 2px solid var(--ink);
+  box-sizing: content-box;
+}
+.dash-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 22px;
+}
+.dash-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  text-align: center;
+}
+.dash-metric img {
+  display: block;
+  width: 100%;
+  max-width: 96px;
+  height: 84px;
+  object-fit: contain;
+}
+.dash-value {
+  margin-top: 8px;
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: 0.04em;
+}
+.dash-value small {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.dash-label {
+  font-size: 13px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+.dash-details {
+  display: block;
+  width: 100%;
+  height: 44px;
+  margin-top: 18px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--olive);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.dash-details:active {
+  background: var(--olive-deep);
+}
+.dash-back-link {
+  margin: 0 0 8px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--olive-dark);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* ---------- Set up farm (in the bottom sheet) ---------- */
+.sheet-head.setup {
+  position: relative;
+  z-index: 0;
+  width: 100%;
+  padding-bottom: 70px;
+  color: #fff;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+  /* photo (if setup_background is in src/assets), darkened at the top and fading into the page colour */
+  background-color: var(--olive-dark);
+  background-image:
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.25), rgba(236, 243, 220, 0) 55%, var(--cream) 100%),
+    var(--setup-bg, none);
+  background-size: cover;
+  background-position: center;
+}
+.sheet-head.setup .sheet-handle {
+  background: #fff;
+}
+.sheet-body.setup {
+  position: relative;
+  z-index: 1;
+  margin-top: -52px;
+}
+.setup {
+  display: flex;
+  flex-direction: column;
+  max-width: 520px;
+  margin: 0 auto;
+}
+.setup-card {
+  padding: 14px 14px 10px;
+  border-radius: 28px;
+  background: rgba(236, 243, 220, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+.setup-row {
+  display: grid;
+  grid-template-columns: 7.2em 1fr;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: 18px;
+  font-weight: 800;
+}
+.setup input {
+  width: 100%;
+  min-width: 0;
+  height: 46px;
+  padding: 0 16px;
+  border: 2px solid #8b917a;
+  border-radius: 23px;
+  background: rgba(255, 255, 255, 0.45);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px; /* 16px stops iOS from zooming in on focus */
+  font-weight: 500;
+}
+.setup select {
+  width: 100%;
+  min-width: 0;
+  height: 46px;
+  padding: 0 38px 0 16px;
+  border: 2px solid #8b917a;
+  border-radius: 23px;
+  background-color: rgba(255, 255, 255, 0.45);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232b1a0c' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 20px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+.setup select:focus-visible,
+.setup input:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 1px;
+}
+.setup-inline {
+  display: flex;
+  gap: 8px;
+}
+.setup-inline input {
+  flex: 1;
+  min-width: 0;
+}
+.setup-inline select {
+  flex: none;
+  width: 9.5em;
+}
+.setup-error {
+  margin: -4px 4px 12px;
+  color: #a33a1c;
+  font-size: 14px;
+}
+.setup input.computed {
+  background: rgba(139, 145, 122, 0.22);
+  font-weight: 700;
+}
+.setup-note {
+  margin: -4px 4px 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.setup-heading {
+  margin: 22px 4px 8px;
+  font-size: 20px;
+  font-weight: 800;
+}
+.setup-field {
+  display: block;
+  margin-bottom: 12px;
+}
+.setup-field > span {
+  display: block;
+  margin: 0 4px 4px;
+  font-size: 17px;
+  font-weight: 700;
+}
+.setup-choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin: 4px 4px 14px;
+}
+.setup-choice > span {
+  font-size: 17px;
+  font-weight: 700;
+}
+.setup-pills {
+  display: flex;
+  gap: 8px;
+}
+.setup-pill {
+  min-width: 64px;
+  height: 40px;
+  padding: 0 16px;
+  border: 2px solid #2b3a1a;
+  border-radius: 14px;
+  background: transparent;
+  color: #2b3a1a;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.setup-pill.on {
+  background: #2b3a1a;
+  color: var(--cream);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25);
+}
+.setup-pill:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
+}
+.setup-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+}
+.setup-back,
+.setup-next {
+  min-width: 140px;
+  height: 56px;
+  padding: 0 28px;
+  border: 0;
+  border-radius: 28px;
+  background: #2b3a1a;
+  color: var(--cream);
+  font: inherit;
+  font-size: 22px;
+  font-weight: 700;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+.setup-back:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 3px;
+}
+.setup-next:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.setup-next:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 3px;
+}
+
 /* ---------- farm pin on the map ---------- */
 .farm-pin {
   width: 36px;
@@ -351,11 +1008,759 @@ body {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
 }
 
+/* ---------- first-visit prompt ---------- */
+.welcome-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 1500;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.welcome-card {
+  width: min(100%, 360px);
+  padding: 26px 22px 22px;
+  border-radius: 30px;
+  background: var(--cream);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  text-align: center;
+}
+.welcome-card h2 {
+  margin: 0 0 10px;
+  font-size: 24px;
+  font-weight: 800;
+}
+.welcome-card p {
+  margin: 0 0 20px;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.welcome-btn {
+  width: 100%;
+  height: 52px;
+  border: 0;
+  border-radius: 26px;
+  background: var(--olive-dark);
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.welcome-btn:active {
+  background: var(--olive-deep);
+}
+
+/* ---------- slide-out menu ---------- */
+.menu-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0s linear 0.3s;
+}
+.menu-backdrop.open {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.3s ease;
+}
+.side-menu {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2001;
+  width: min(88%, 380px);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding-bottom: calc(20px + var(--safe-bottom));
+  background: var(--cream);
+  border-radius: 0 30px 30px 0;
+  box-shadow: 6px 0 24px rgba(0, 0, 0, 0.3);
+  transform: translateX(-100%);
+  visibility: hidden;
+  transition: transform 0.3s ease, visibility 0s linear 0.3s;
+}
+.side-menu.open {
+  transform: none;
+  visibility: visible;
+  transition: transform 0.3s ease;
+}
+/* olive header that curves away at the bottom right, like the design */
+.side-menu-header {
+  flex: none;
+  padding: calc(var(--safe-top) + 8px) 8px 40px;
+  background: var(--olive-dark);
+  border-bottom-right-radius: 100% 80%;
+}
+.side-menu-logo {
+  display: block;
+  width: 100%;
+  max-width: 380px;
+  height: auto;
+  /* the logo image has empty space above and below it, so pull that in */
+  margin: -12% auto -12%;
+  user-select: none;
+}
+.side-menu-items {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 20px 0;
+}
+.side-menu-item {
+  flex: none;
+  height: 52px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 26px;
+  background: var(--olive);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.side-menu-item:active {
+  background: var(--olive-deep);
+}
+/* the farm currently shown on the map */
+.side-menu-item.active {
+  background: var(--olive-dark);
+  color: #fff;
+}
+/* "+ Add new map" */
+.side-menu-item.add {
+  background: transparent;
+  border: 2px dashed var(--olive-deep);
+  color: var(--olive-dark);
+}
+.side-menu-item.add:active {
+  background: var(--olive);
+}
+
+/* farm row: name button + trash button */
+.side-menu-row {
+  display: flex;
+  gap: 8px;
+}
+.side-menu-row .side-menu-item {
+  flex: 1;
+  min-width: 0;
+}
+.side-menu-delete {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(163, 58, 28, 0.12);
+  color: #a33a1c;
+  cursor: pointer;
+}
+.side-menu-delete:active {
+  background: rgba(163, 58, 28, 0.25);
+}
+/* "Delete Farm 2?  Cancel  Delete" */
+.side-menu-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 52px;
+  padding: 0 7px 0 18px;
+  border-radius: 26px;
+  background: #fff0dc;
+  color: #8a5200;
+  font-size: 15px;
+  font-weight: 700;
+}
+.side-menu-confirm span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.confirm-btn {
+  flex: none;
+  height: 38px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 19px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.confirm-btn.cancel {
+  background: var(--olive);
+  color: var(--ink);
+}
+.confirm-btn.danger {
+  background: #a33a1c;
+  color: #fff;
+}
+
+/* "My Farms" button with a drop-down arrow */
+.myfarms-row {
+  display: flex;
+  align-items: stretch;
+  height: 52px;
+  border-radius: 26px;
+  background: var(--olive);
+  overflow: hidden;
+}
+.myfarms-main {
+  flex: 1;
+  min-width: 0;
+  padding: 0 22px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.myfarms-toggle {
+  flex: none;
+  width: 58px;
+  border: 0;
+  border-left: 1px solid rgba(43, 26, 12, 0.18);
+  background: none;
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.myfarms-main:active,
+.myfarms-toggle:active {
+  background: var(--olive-deep);
+}
+.myfarms-toggle svg {
+  transition: transform 0.2s ease;
+}
+.myfarms-toggle svg.open {
+  transform: rotate(180deg);
+}
+/* the list of farms under the button */
+.myfarms-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 0 0 14px;
+}
+.myfarms-list .side-menu-item,
+.myfarms-list .side-menu-delete,
+.myfarms-list .side-menu-confirm {
+  height: 46px;
+}
+.myfarms-list .side-menu-delete {
+  width: 46px;
+}
+.myfarms-list .side-menu-item {
+  font-size: 15px;
+}
+.myfarms-list .side-menu-confirm {
+  padding-left: 14px;
+  font-size: 14px;
+}
+.myfarms-list .hint {
+  margin: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .map-toast,
+  .yield-bar,
   .sheet,
-  .weather-chip,
   .leaflet-control-attribution,
-  .layers-toggle svg {
+  .layers-toggle svg,
+  .menu-backdrop,
+  .myfarms-toggle svg,
+  .side-menu {
     transition: none;
   }
+}
+
+/* ---------- Set up farm: plots, crop records, soil ---------- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.plot-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+.plot-tab {
+  max-width: 100%;
+  height: 40px;
+  padding: 0 18px;
+  border: 2px solid #2b3a1a;
+  border-radius: 20px;
+  background: transparent;
+  color: #2b3a1a;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.plot-tab.on {
+  background: #2b3a1a;
+  color: var(--cream);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25);
+}
+.plot-tab.add {
+  border-color: var(--olive-dark);
+  color: var(--ink);
+}
+.plot-tab:focus-visible,
+.setup-add:focus-visible,
+.setup-link:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
+}
+.plot-title-row,
+.setup-record-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.plot-title,
+.setup-record-head h4,
+.setup-card-title {
+  margin: 0 4px 8px;
+  font-size: 20px;
+  font-weight: 800;
+}
+.setup-link {
+  padding: 4px 6px;
+  border: 0;
+  background: none;
+  color: var(--olive-dark);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.setup-record {
+  margin-bottom: 8px;
+  padding: 12px 12px 4px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+.setup-sub {
+  margin: 10px 4px 6px;
+  font-size: 17px;
+  font-weight: 800;
+}
+.setup-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.setup-grid2 .setup-field {
+  min-width: 0;
+}
+.setup-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 46px;
+  margin-top: 6px;
+  border: 2px solid #2b3a1a;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* round radio choices */
+.setup-radios {
+  min-width: 0;
+  margin: 4px 0 12px;
+  padding: 0;
+  border: 0;
+}
+.setup-radios legend {
+  display: block;
+  margin: 0 4px 4px;
+  padding: 0;
+  font-size: 17px;
+  font-weight: 700;
+}
+.setup-radio-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 14px;
+}
+.setup-radios.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 14px;
+  margin: 4px 4px 12px;
+}
+.setup-radios.row legend {
+  float: left;
+  margin: 0;
+}
+.setup-radios.row .setup-radio-list {
+  flex-direction: row;
+  gap: 18px;
+  padding-left: 0;
+  margin-left: auto;
+}
+.setup-radio {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.setup .setup-radio input {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  padding: 0;
+  border: 2px solid #2b3a1a;
+  border-radius: 50%;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+.setup .setup-radio input:checked {
+  background: radial-gradient(circle, #2b3a1a 0 45%, transparent 50%);
+}
+
+/* soil moisture slider */
+.setup-slider-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 4px 4px;
+}
+.setup-slider-head label {
+  font-size: 17px;
+  font-weight: 700;
+}
+.setup-slider-head small {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.setup-slider-head output {
+  font-size: 18px;
+  font-weight: 800;
+}
+.setup-slider-head output.unset {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+}
+.setup .setup-slider input[type="range"] {
+  display: block;
+  height: 46px;
+  padding: 0 4px;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+.setup .setup-slider input[type="range"]::-webkit-slider-runnable-track {
+  height: 42px;
+  background: transparent;
+}
+.setup .setup-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 30px;
+  height: 30px;
+  margin-top: 6px;
+  border: 0;
+  border-radius: 50%;
+  background: #2b3a1a;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+}
+.setup .setup-slider input[type="range"]::-moz-range-track {
+  height: 42px;
+  background: transparent;
+}
+.setup .setup-slider input[type="range"]::-moz-range-thumb {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: #2b3a1a;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
+}
+.setup-scale {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 4px 4px 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* "Your Previous Harvest" card */
+.setup-summary {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin: 0 4px 8px;
+}
+.setup-thumb {
+  flex: none;
+  width: 38%;
+  max-width: 170px;
+}
+.setup-summary-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 16px;
+}
+.setup-summary-text b {
+  font-size: 18px;
+}
+
+/* "Add a new farm" tile at the end of the dashboard's farm row */
+.farm-card.add-farm-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 130px;
+  background: transparent;
+  border: 2px dashed var(--olive-dark);
+  box-shadow: none;
+  color: var(--olive-dark);
+}
+.add-farm-plus {
+  font-size: 44px;
+  font-weight: 300;
+  line-height: 1;
+}
+.add-farm-card .farm-card-name {
+  margin-top: 4px;
+}
+.add-farm-card:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 3px;
+}
+
+/* edit buttons */
+.dash-details.secondary {
+  margin-top: 10px;
+  border: 2px solid var(--olive-dark);
+  background: transparent;
+  color: var(--olive-dark);
+}
+.dash-details.secondary:active {
+  background: var(--olive);
+}
+.farm-info-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ---------- plot outlines on the map ---------- */
+.leaflet-tooltip.plot-label {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+}
+.leaflet-tooltip.plot-label::before {
+  display: none;
+}
+.plot-bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--sheet-h) + 14px);
+  z-index: 1100;
+  max-width: 460px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 18px;
+  background: var(--cream);
+  color: var(--ink);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  font-size: 15px;
+}
+.plot-bar-actions {
+  display: flex;
+  gap: 10px;
+}
+.plot-bar-actions button {
+  flex: 1;
+  height: 40px;
+  border: 2px solid #2b3a1a;
+  border-radius: 20px;
+  background: transparent;
+  color: #2b3a1a;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.plot-bar-actions button:last-child {
+  background: #2b3a1a;
+  color: var(--cream);
+}
+.plot-bar-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.plot-bar-actions button:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
+}
+.map-toast.above-bar {
+  bottom: calc(var(--sheet-h) + 150px);
+}
+.plot-outline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 0 4px 6px;
+}
+.plot-draw-btn {
+  height: 40px;
+  padding: 0 18px;
+  border: 2px solid #2b3a1a;
+  border-radius: 20px;
+  background: transparent;
+  color: #2b3a1a;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.plot-draw-btn:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
+}
+
+/* ---------- plot details card (tap a plot on the map) ---------- */
+.plot-card {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--sheet-h) + 14px);
+  z-index: 1100;
+  max-width: 460px;
+  max-height: 46%;
+  margin: 0 auto;
+  padding: 12px 16px 14px;
+  overflow-y: auto;
+  border-radius: 22px;
+  background: var(--cream);
+  color: var(--ink);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+.plot-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.plot-card-head h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+}
+.plot-card-head h3 i {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.plot-card-head button {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(43, 58, 26, 0.12);
+  color: inherit;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.plot-card .row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+  font-size: 15px;
+}
+.plot-card .row b {
+  text-align: right;
+}
+.plot-card-edit {
+  display: block;
+  width: 100%;
+  height: 42px;
+  margin-top: 10px;
+  border: 0;
+  border-radius: 21px;
+  background: #2b3a1a;
+  color: var(--cream);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.plot-card-head button:focus-visible,
+.plot-card-edit:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
 }

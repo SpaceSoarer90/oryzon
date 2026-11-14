@@ -55,14 +55,14 @@ COL_YEAR, COL_DOY = "YEAR", "DOY"  # ...otherwise the date is built from year + 
 #            0.35 (default) = the lowest values fade out so they don't look like white haze over the map.
 DATASETS = {
     "precipitation": {"file": "power_daily/PRECTOTCORR_2025.csv", "format": "csv", "column": "PRECTOTCORR", "decimals": 2,
-                      "color": "#0b3d91", "low_color": None},
+                      "color": "#0b3d91", "low_color": None, "fade": 0.1 },
     "temperature":   {"file": "power_daily/T2M_2025.csv",         "format": "csv", "column": "T2M",         "decimals": 1,
                       "color": "#c0392b", "low_color": None},
     # FLDAS monthly soil moisture. It has four depths (SoilMoi00_10cm_tavg, ...10_40cm..., ...40_100cm..., ...100_200cm...);
     # this is the top 0-10 cm. To serve another depth, add one more entry here with that variable name.
     # If `file`/`column` are wrong the server still starts, and /api/layers says why.
     "soilMoisture":  {"file": "fldas_monthly/fldas_monthly_ph_2025.nc4", "format": "netcdf", "column": "SoilMoi00_10cm_tavg",
-                      "decimals": 2, "period": "month", "color": "#5b3a12", "low_color": None},
+                      "decimals": 2, "period": "month", "color": "#43c864", "low_color": None},
 }
 
 
