@@ -22,8 +22,10 @@ import precipitationClicked from "./assets/precipitation_clicked.png";
 
 /* ---------- constants ---------- */
 
-const START_CENTER: LatLng = [16.155, 119.985]; // Alaminos City, Pangasinan
-const START_ZOOM = 16;
+// Opening view: Alaminos City and the Hundred Islands coast, with farmland inland.
+// Lower zoom = further out (try 10 for more of Pangasinan, 12 to get closer).
+const START_CENTER: LatLng = [16.19, 119.99];
+const START_ZOOM = 11;
 const CLOSE_PX = 24; // tap within this many pixels of the first point to close the shape
 const FARM_NAME = "FARM 1"; // placeholder until farms can be saved
 
@@ -184,9 +186,11 @@ export function FarmMap() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [place, setPlace] = useState<string | null>(null);
-  const [layer, setLayer] = useState<MetricKey>("soilMoisture");
+  // null = no layer selected, so the plain satellite map is shown
+  const [layer, setLayer] = useState<MetricKey | null>(null);
   const [layersOpen, setLayersOpen] = useState(true);
-  const [sheetOpen, setSheetOpen] = useState(false);
+  // peek = just the "CONDITION" bar, half = partly open, full = covers the whole screen
+  const [sheet, setSheet] = useState<"peek" | "half" | "full">("peek");
 
   const current = data ? data[month] : null;
   const advice = current ? getAdvice(current) : null;
@@ -195,7 +199,7 @@ export function FarmMap() {
   useEffect(() => {
     if (poly.closed) {
       setDrawing(false);
-      setSheetOpen(true);
+      setSheet("half");
     }
   }, [poly.closed]);
 
@@ -240,14 +244,14 @@ export function FarmMap() {
     setDrawing(true);
     setData(null);
     setError(null);
-    setSheetOpen(false);
+    setSheet("peek");
   }
 
   const pillText = poly.closed ? place ?? "Locating…" : "Outline your farm on the map";
   const orderedMetrics = [...METRICS].sort((a, b) => Number(b.key === layer) - Number(a.key === layer));
 
   return (
-    <div className={`app ${sheetOpen ? "sheet-open" : ""}`}>
+    <div className={`app sheet-${sheet}`}>
       <MapContainer
         center={START_CENTER}
         zoom={START_ZOOM}
@@ -298,7 +302,7 @@ export function FarmMap() {
                   className={`layer-btn ${layer === l.key ? "active" : ""}`}
                   aria-label={l.label}
                   aria-pressed={layer === l.key}
-                  onClick={() => setLayer(l.key)}
+                  onClick={() => setLayer((prev) => (prev === l.key ? null : l.key))}
                 >
                   <img
                     src={layer === l.key ? l.iconClicked : l.icon}
@@ -320,8 +324,8 @@ export function FarmMap() {
       <section className="sheet" aria-label="Condition">
         <button
           className="sheet-head"
-          onClick={() => setSheetOpen((o) => !o)}
-          aria-expanded={sheetOpen}
+          onClick={() => setSheet((s) => (s === "full" ? "peek" : "full"))}
+          aria-expanded={sheet === "full"}
         >
           <span className="sheet-handle" />
           <span className="sheet-title">CONDITION</span>
