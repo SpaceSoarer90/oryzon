@@ -1,6 +1,7 @@
 import type { LatLng, DayData, DayGrid, GridMeta, MetricKey, Bounds } from "./types";
 
-const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+// const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+const API = "https://oryzon-wyyo.onrender.com";
 
 // Leaflet uses [lat, lng]; GeoJSON uses [lng, lat] and the ring must be closed.
 export function toGeoJSONPolygon(points: LatLng[]): GeoJSON.Polygon {
