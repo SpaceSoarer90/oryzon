@@ -4420,3 +4420,382 @@ body {
 .dp-range.tl-range:focus-visible {
   outline: 3px solid var(--green);
 }
+
+
+/* ---------- Dashboard: crops for future seasons ---------- */
+/* the readings card now stands alone, so it spans the full width even in a roomy sheet */
+@container sheet (min-width: 640px) {
+  .sheet-body.banner > .dash-card {
+    grid-column: 1 / -1;
+  }
+  .crop-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.crop-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+.crop-card {
+  padding: 14px;
+  border-radius: 26px;
+  background: var(--card);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+}
+.crop-card.cover {
+  box-shadow: 0 0 0 3px rgba(115, 122, 51, 0.45), 0 4px 12px rgba(0, 0, 0, 0.16);
+}
+
+.crop-main {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.crop-pic {
+  flex: none;
+  width: 108px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.crop-photo {
+  display: grid;
+  place-items: center;
+  width: 108px;
+  height: 108px;
+  overflow: hidden;
+  border: 3px solid #2b3a1a;
+  border-radius: 22px;
+  background: var(--cream);
+  font-size: 52px;
+}
+.crop-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.crop-name {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.crop-facts {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.crop-facts dt,
+.crop-facts dd {
+  display: inline;
+  margin: 0;
+}
+.crop-facts dt {
+  font-weight: 800;
+}
+.crop-facts ul {
+  margin: 3px 0 0;
+  padding-left: 20px;
+}
+.crop-facts li b {
+  font-weight: 700;
+}
+.crop-facts .crop-benefits dd,
+.crop-facts dd:has(ul) {
+  display: block;
+}
+.crop-pending {
+  color: var(--muted);
+}
+
+/* "Learn how to plant" drop-down */
+.crop-how {
+  margin-top: 12px;
+  border-radius: 20px;
+  background: var(--cream);
+  overflow: hidden;
+}
+.crop-how summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  list-style: none;
+  cursor: pointer;
+}
+.crop-how summary::-webkit-details-marker {
+  display: none;
+}
+.crop-how summary::after {
+  content: "";
+  width: 9px;
+  height: 9px;
+  margin-top: -4px;
+  border-right: 2.5px solid currentColor;
+  border-bottom: 2.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+}
+.crop-how[open] summary::after {
+  margin-top: 4px;
+  transform: rotate(-135deg);
+}
+.crop-how summary:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: -3px;
+  border-radius: 20px;
+}
+.crop-how-body {
+  padding: 4px 16px 16px;
+  background: var(--olive);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.crop-how-body ol {
+  margin: 12px 0 10px;
+  padding-left: 20px;
+}
+.crop-how-body li {
+  margin-bottom: 6px;
+}
+.crop-how-body p {
+  margin: 8px 0 0;
+}
+
+@container sheet (max-width: 400px) {
+  .crop-pic,
+  .crop-photo {
+    width: 88px;
+  }
+  .crop-photo {
+    height: 88px;
+    font-size: 42px;
+  }
+  .crop-name {
+    font-size: 15px;
+  }
+  .crop-facts {
+    font-size: 13px;
+  }
+}
+
+
+/* ---------- dashboard tile that opens the crop guide ---------- */
+.crop-entry {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 420px;
+  margin: 18px auto 0;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 28px;
+  background: #2b3a1a;
+  color: var(--cream);
+  font: inherit;
+  text-align: left;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+.crop-entry:active {
+  background: #1f2b12;
+}
+.crop-entry:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 3px;
+}
+.crop-entry-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--olive);
+  color: #2b3a1a;
+}
+.crop-entry-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.crop-entry-text b {
+  font-size: 18px;
+  font-weight: 800;
+}
+.crop-entry-text small {
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+.crop-view {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.crop-how-intro {
+  margin: 12px 0 0;
+}
+.crop-how-body ol {
+  margin-top: 10px;
+}
+
+
+/* price disclaimer at the top of the crop guide */
+.crop-disclaimer {
+  margin: 14px 0 8px;
+  padding: 10px 14px;
+  border-left: 5px solid #e2a21f;
+  border-radius: 14px;
+  background: #fff0dc;
+  color: #8a5200;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* ---------- scroll bars: same thin olive bar as the sheet (crop guide) ---------- */
+.side-menu,
+.cond-pop,
+.plot-card,
+.search-results {
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(115, 122, 51, 0.5) transparent;
+}
+
+
+/* ---------- full-width Dashboard: the readings card is centred now that the yield chart is gone ---------- */
+@container sheet (min-width: 640px) {
+  .sheet-body.banner > .dash-card,
+  .sheet-body.banner > .dash-card:not(:only-child) {
+    grid-column: 1 / -1;
+    max-width: 480px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .crop-entry,
+  .carousel,
+  .dash-heading {
+    max-width: 480px;
+  }
+}
+
+.crop-photo-fallback {
+  color: var(--olive-dark);
+  font-size: 44px;
+  font-weight: 800;
+}
+
+
+/* ---------- Plan next season: the main call to action on the Dashboard ---------- */
+.plan-hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 420px;
+  margin: 4px auto 16px;
+  padding: 20px 18px;
+  border: 0;
+  min-height: 112px; /* the Dashboard is a grid: without this the card can be squeezed flat */
+  border-radius: 34px;
+  /* the golden glow in the corner is part of the background, so nothing needs clipping */
+  background:
+    radial-gradient(circle at 100% 0%, rgba(191, 162, 58, 0.45), transparent 45%),
+    linear-gradient(135deg, #4a6128 0%, #2b3a1a 70%);
+  color: var(--cream);
+  font: inherit;
+  text-align: left;
+  box-shadow: 0 0 0 3px var(--gold), 0 10px 22px rgba(0, 0, 0, 0.32);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.plan-hero:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 0 3px var(--gold), 0 14px 26px rgba(0, 0, 0, 0.38);
+}
+.plan-hero:active {
+  transform: scale(0.985);
+}
+.plan-hero:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+.plan-hero-icon {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: var(--gold);
+  color: #2b3a1a;
+}
+.plan-hero-text {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.plan-hero-text b {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+.plan-hero-text small {
+  font-size: 14px;
+  line-height: 1.3;
+  opacity: 0.85;
+}
+.plan-hero-go {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--cream);
+  color: #2b3a1a;
+}
+@media (prefers-reduced-motion: reduce) {
+  .plan-hero {
+    transition: none;
+  }
+}
+@container sheet (min-width: 640px) {
+  .plan-hero {
+    max-width: 480px;
+  }
+}

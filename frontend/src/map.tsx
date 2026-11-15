@@ -1600,21 +1600,139 @@ function YieldChart({ farm }: { farm: Farm }) {
   );
 }
 
-// Optional photos for the Commodities row: src/assets/commodity_rice, commodity_onion, commodity_garlic,
-// commodity_mung_beans (.png/.jpg/.webp). Without a file the tile shows an emoji instead.
-const commodityFiles = import.meta.glob(
-  "./assets/{commodity_rice,commodity_onion,commodity_garlic,commodity_mung_beans}.*",
-  { eager: true, query: "?url", import: "default" },
-) as Record<string, string>;
-const COMMODITIES = [
-  { key: "rice", label: "Rice", emoji: "🌾" },
-  { key: "onion", label: "Onion", emoji: "🧅" },
-  { key: "garlic", label: "Garlic", emoji: "🧄" },
-  { key: "mung_beans", label: "Mung beans", emoji: "🫘" },
-].map((c) => {
-  const path = Object.keys(commodityFiles).find((p) => p.startsWith(`./assets/commodity_${c.key}.`));
-  return { ...c, src: path ? commodityFiles[path] : "" };
-});
+// ---- Crop guide: crops the farmer can consider for coming seasons ----
+// Crop photos: put these files in src/assets (or any folder inside it): Maize, Potato, Soybean, Cabbage, Tomato,
+// Sugarcane, Dry_Bean and Mungbean, as .png, .jpg or .webp. Capital letters do not matter.
+const cropFiles = import.meta.glob("./assets/**/*.{png,jpg,jpeg,webp}", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
+const CROP_FILE: Record<string, string> = {
+  maize: "Maize",
+  potato: "Potato",
+  soybean: "Soybean",
+  cabbage: "Cabbage",
+  tomato: "Tomato",
+  sugarcane: "Sugarcane",
+  dry_bean: "Dry_Bean",
+  mungbean: "Mungbean",
+};
+
+interface CropGuideItem {
+  key: string;
+  name: string;
+  role: "yield" | "cover";
+  growing: string;
+  decreases?: string;
+  increases?: string;
+  neutral?: string;
+  guide?: { intro: string; steps: { title: string; text: string }[]; bestFor: string; mainBenefit: string };
+}
+
+const CROP_GUIDE: CropGuideItem[] = [
+  { key: "maize", name: "Maize", role: "yield", growing: "100-180 days", decreases: "Nitrogen, Phosphorus, Potassium", increases: "Organic Carbon", neutral: "Soil pH" },
+  { key: "potato", name: "Potato", role: "yield", growing: "90-140 days", decreases: "Erosion and Loss of Nutrients", increases: "Soil Biodiversity and Carbon", neutral: "Soil pH level" },
+  { key: "soybean", name: "Soybean", role: "yield", growing: "100-180 days", decreases: "Phosphorus, Potassium", increases: "Nitrogen, Organic Carbon", neutral: "Soil pH" },
+  { key: "cabbage", name: "Cabbage", role: "yield", growing: "90-140 days", decreases: "Erosion and Loss of Nutrients", increases: "Soil Biodiversity and Carbon", neutral: "Soil Organic Matter" },
+  { key: "tomato", name: "Tomato", role: "yield", growing: "100-130 days", decreases: "Nitrogen level and soil pH level", increases: "Soil salinity", neutral: "Soil organic carbon" },
+  { key: "sugarcane", name: "Sugarcane", role: "yield", growing: "270-365 days or longer", decreases: "Nitrogen, Phosphorus, Potassium", increases: "Organic Carbon", neutral: "Soil pH" },
+  { key: "dry_bean", name: "Dry Bean", role: "yield", growing: "90-120 days", decreases: "Phosphorus, Potassium", increases: "Nitrogen, Organic Carbon", neutral: "Soil pH" },
+  {
+    key: "mungbean",
+    name: "Mungbean",
+    role: "cover",
+    growing: "100-130 days",
+    guide: {
+      intro: "Mungbean is an easy cover crop to grow, and it looks after your soil while your fields rest. Here is how to do it:",
+      steps: [
+        { title: "Clear the ground", text: "Pull out the weeds and loosen the soil so the roots can spread easily." },
+        { title: "Sow the seeds", text: "Plant them in shallow holes or in rows, about 2\u20133 cm deep." },
+        { title: "Keep the soil moist", text: "Water regularly, especially in the first days, so the seeds sprout well." },
+        { title: "Let it grow", text: "Give the plants time to grow full and leafy. That leafy growth is what feeds your soil." },
+        { title: "Cut it down before the pods ripen", text: "Cut the plants once they have grown plenty of leaves but before the pods fully develop." },
+        { title: "Leave it in the field", text: "Leave the roots and the cut plants on the soil. As they break down, they give back organic matter and nitrogen." },
+      ],
+      bestFor: "Warm, tropical parts of the Philippines, planted in the gap between your main cropping seasons.",
+      mainBenefit: "Mungbean pulls nitrogen from the air and stores it in the soil, which can give your next crop more to work with.",
+    },
+  },
+];
+
+function cropPhoto(key: string): string {
+  const want = (CROP_FILE[key] ?? key).toLowerCase();
+  const path = Object.keys(cropFiles).find((p) => (p.split("/").pop() ?? "").replace(/\.[^.]+$/, "").toLowerCase() === want);
+  if (!path) console.error(`Missing image: src/assets/${CROP_FILE[key] ?? key}.(png|jpg|webp)`);
+  return path ? cropFiles[path] : "";
+}
+
+function CropGuide() {
+  return (
+    <div className="crop-grid">
+      {CROP_GUIDE.map((c) => {
+        const src = cropPhoto(c.key);
+        const benefits: [string, string | undefined][] = [
+          ["Decreases", c.decreases],
+          ["Increases", c.increases],
+          ["Neutral", c.neutral],
+        ];
+        const hasBenefits = benefits.some(([, v]) => v);
+        return (
+          <article className={`crop-card ${c.role}`} key={c.key}>
+            <div className="crop-main">
+              <div className="crop-pic">
+                <div className="crop-photo">
+                  {src ? <img src={src} alt="" draggable={false} /> : <span className="crop-photo-fallback" aria-hidden="true">{c.name.charAt(0)}</span>}
+                </div>
+                <h4 className="crop-name">{c.name}</h4>
+              </div>
+              <dl className="crop-facts">
+                <div>
+                  <dt>Growing period:</dt> <dd>{c.growing}</dd>
+                </div>
+                <div>
+                  <dt>Soil benefits:</dt>{" "}
+                  {hasBenefits ? (
+                    <dd>
+                      <ul>
+                        {benefits.map(([label, v]) =>
+                          v ? (
+                            <li key={label}>
+                              <b>{label}:</b> {v}
+                            </li>
+                          ) : null,
+                        )}
+                      </ul>
+                    </dd>
+                  ) : (
+                    <dd className="crop-pending">{"\u2014"}</dd>
+                  )}
+                </div>
+              </dl>
+            </div>
+            {c.guide && (
+              <details className="crop-how">
+                <summary>Learn how to plant</summary>
+                <div className="crop-how-body">
+                  <p className="crop-how-intro">{c.guide.intro}</p>
+                  <ol>
+                    {c.guide.steps.map((s) => (
+                      <li key={s.title}>
+                        <b>{s.title}.</b> {s.text}
+                      </li>
+                    ))}
+                  </ol>
+                  <p>
+                    <b>Where it works best:</b> {c.guide.bestFor}
+                  </p>
+                  <p>
+                    <b>What it does for your soil:</b> {c.guide.mainBenefit}
+                  </p>
+                </div>
+              </details>
+            )}
+          </article>
+        );
+      })}
+    </div>
+  );
+}
 
 // Swipeable row of the saved farms, with an arrow and page dots when there are more than fit.
 function FarmCarousel({
@@ -2321,7 +2439,7 @@ export function FarmMap() {
   const mapRef = useRef<L.Map | null>(null);
   // what the bottom sheet shows: the Dashboard, the detailed Condition view, the My Farms screen,
   // the Set up farm form (opens right after a new outline is finished), or the Plan next season screen
-  const [sheetView, setSheetView] = useState<"dashboard" | "condition" | "farms" | "setup" | "plan">("dashboard");
+  const [sheetView, setSheetView] = useState<"dashboard" | "condition" | "farms" | "crops" | "setup" | "plan">("dashboard");
   // the "My Farms" drop-down in the menu
   const [farmsOpen, setFarmsOpen] = useState(false);
   // the "Deleted. Undo" message, and the timer that hides it
@@ -2880,7 +2998,7 @@ export function FarmMap() {
   // the selected day is more than 30 days ago
   const stale = !!date && Date.now() - new Date(`${date}T00:00:00`).getTime() > 30 * 86400000;
   const sheetTitle =
-    sheetView === "farms" ? "MY FARMS" : sheetView === "setup" ? "SET UP FARM" : sheetView === "plan" ? "PLAN NEXT SEASON" : sheetView === "dashboard" ? "DASHBOARD" : (activeFarm?.name ?? "Condition").toUpperCase();
+    sheetView === "farms" ? "MY FARMS" : sheetView === "crops" ? "CROP GUIDE" : sheetView === "setup" ? "SET UP FARM" : sheetView === "plan" ? "PLAN NEXT SEASON" : sheetView === "dashboard" ? "DASHBOARD" : (activeFarm?.name ?? "Condition").toUpperCase();
   const viewClass = sheetView === "condition" ? "" : sheetView === "setup" ? "setup" : "banner";
   // True whenever the app is waiting on something: the farm's numbers, a map layer, a place search, the water check.
   const busy =
@@ -3294,7 +3412,7 @@ export function FarmMap() {
 
       {/* bottom sheet */}
       <section className={`sheet ${dragging ? "dragging" : ""}`} ref={sheetRef} aria-label={sheetTitle.charAt(0) + sheetTitle.slice(1).toLowerCase()}>
-        {sheetView === "farms" && (
+        {(sheetView === "farms" || sheetView === "crops") && (
           <button className="sheet-back" onClick={openDashboardView}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
               <path d="M15 5l-7 7 7 7" />
@@ -3348,6 +3466,34 @@ export function FarmMap() {
             />
           ) : sheetView === "dashboard" || sheetView === "setup" ? (
             <>
+            {poly.closed && activeFarm && (
+              <button
+                type="button"
+                className="plan-hero"
+                onClick={() => {
+                  setSheetView("plan");
+                  setSheet("full");
+                }}
+              >
+                <span className="plan-hero-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M7 20h10" />
+                    <path d="M10 20c5.5-2.5.8-6.4 3-10" />
+                    <path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z" />
+                    <path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z" />
+                  </svg>
+                </span>
+                <span className="plan-hero-text">
+                  <b>Plan next season</b>
+                  <small>Find out what to plant next on {activeFarm.name}</small>
+                </span>
+                <span className="plan-hero-go" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 5l7 7-7 7" />
+                  </svg>
+                </span>
+              </button>
+            )}
             <div className="dash-card">
               {!poly.closed ? (
                 <p className="hint">
@@ -3461,42 +3607,46 @@ export function FarmMap() {
                       Edit farm details
                     </button>
                   )}
-                  {activeFarm && poly.closed && (
-                    <button className="dash-details plan-cta" onClick={() => { setSheetView("plan"); setSheet("full"); }}>
-                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <path d="M7 20h10" />
-                        <path d="M10 20c5.5-2.5.8-6.4 3-10" />
-                        <path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z" />
-                        <path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z" />
-                      </svg>
-                      Plan next season
-                    </button>
-                  )}
                 </>
               )}
             </div>
 
             {poly.closed && activeFarm && (
               <>
-                <section className="dash-panel" aria-label="Yield">
-                  <h3 className="dash-panel-title">YIELD</h3>
-                  <YieldChart farm={activeFarm} />
-                </section>
-
-                <h3 className="dash-heading">COMMODITIES AND FOOD</h3>
-                <div className="commodities">
-                  {COMMODITIES.map((c) => (
-                    <div className="commodity" key={c.key} role="img" aria-label={c.label} title={c.label}>
-                      {c.src ? <img src={c.src} alt="" draggable={false} /> : <span aria-hidden="true">{c.emoji}</span>}
-                    </div>
-                  ))}
-                </div>
+                <button
+                  type="button"
+                  className="crop-entry"
+                  onClick={() => {
+                    setSheetView("crops");
+                    setSheet("full");
+                  }}
+                >
+                  <span className="crop-entry-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M7 20h10" />
+                      <path d="M10 20c5.5-2.5.8-6.4 3-10" />
+                      <path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z" />
+                      <path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z" />
+                    </svg>
+                  </span>
+                  <span className="crop-entry-text">
+                    <b>Crops for future seasons</b>
+                    <small>See what you could plant next</small>
+                  </span>
+                  <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
 
                 <h3 className="dash-heading">MY FARMS</h3>
                 <FarmCarousel farms={farms} activeId={activeId} onSelect={selectFarm} onAdd={startNewFarm} />
               </>
             )}
             </>
+          ) : sheetView === "crops" ? (
+            <div className="crop-view">
+              <CropGuide />
+            </div>
           ) : sheetView === "farms" ? (
             <div className="farm-grid">
               {farms.length === 0 && (
