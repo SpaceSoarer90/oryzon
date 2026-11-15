@@ -30,10 +30,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     ORYZON_DSSAT_HOME=/opt/dssat \
     ORYZON_DSSAT_DIR=/tmp/oryzon/dssat-work
 
-# binutils provides readelf, which the startup validator uses to distinguish
-# dynamically linked DSSAT builds from valid static executables.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends binutils libgfortran5 libgomp1 \
+    && apt-get install -y --no-install-recommends libgfortran5 libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
