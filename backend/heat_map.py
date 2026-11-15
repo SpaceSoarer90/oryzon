@@ -4,6 +4,13 @@ import numpy as np
 from PIL import Image, ImageColor
 
 
+def _ramp(t: np.ndarray, stops) -> np.ndarray:
+    """Colour for every value of t (0..1) from [(position 0..1, '#hex'), ...]. Returns shape (..., 3)."""
+    pos = [p for p, _ in stops]
+    cols = np.array([ImageColor.getrgb(c) for _, c in stops], dtype=np.float64)
+    return np.stack([np.interp(t, pos, cols[:, k]) for k in range(3)], axis=-1)
+
+
 class GridHeatmap:
     """
     Reusable bilinear rasterizer for a regular geographic grid.
@@ -119,6 +126,7 @@ class GridHeatmap:
         min_value: float,
         max_value: float,
         opacity: float = 0.8,
+        colormap: list | None = None,
     ) -> bytes:
         """
         Render one frame as a PNG.
@@ -126,7 +134,10 @@ class GridHeatmap:
         min_value and max_value should remain FIXED across frames
         to ensure consistent opacity throughout the timeline.
 
-        Two looks:
+        Three looks:
+          * colormap=[(0.0, "#..."), (0.5, "#..."), (1.0, "#...")]: a multi-colour ramp (like NASA Worldview).
+            The VALUE picks the colour. fade_until makes the lowest values see-through (smooth curve), so the
+            map underneath shows instead of a flat tint.
           * low_color=None (default): one colour, and the VALUE controls the opacity
             (low = see-through, high = solid).
           * low_color="#7dbbff": a colour ramp. The VALUE controls the colour, from low_color
@@ -206,7 +217,17 @@ class GridHeatmap:
             (self.height, self.width, 4), dtype=np.uint8
         )
 
-        if low_color is None:
+        if colormap is not None:
+            t = np.nan_to_num(normalized, nan=0.0)
+            rgba[..., :3] = _ramp(t, colormap).astype(np.uint8)
+            if fade_until > 0:
+                s = np.clip(t / fade_until, 0.0, 1.0)
+                strength = s * s * (3 - 2 * s)          # smoothstep: no hard edge where the colour starts
+            else:
+                strength = 1.0
+            alpha = np.where(np.isfinite(interpolated), opacity * 255 * strength, 0)
+            rgba[..., 3] = alpha.astype(np.uint8)
+        elif low_color is None:
             # Map values to opacity.
             alpha = normalized * opacity * 255
             alpha = np.nan_to_num(alpha, nan=0)

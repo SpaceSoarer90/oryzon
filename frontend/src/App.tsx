@@ -32,9 +32,9 @@ function useHash(): string {
 export default function App() {
   const hash = useHash();
 
-  if (hash === "#plan") return <PlanNext onBack={() => { window.location.hash = "map"; }} />;
+  // if (hash === "#plan") return <PlanNext onBack={() => { window.location.hash = "map"; }} />;
 
-  if (hash === "#map") return <FarmMap onBack={() => { window.location.hash = ""; }} />;
+  // if (hash === "#map") return <FarmMap onBack={() => { window.location.hash = ""; }} />;
 
   return (
     <>

@@ -8,10 +8,12 @@ import {
   CircleMarker,
   Marker,
   ImageOverlay,
+  Pane,
   Tooltip,
   useMap,
   useMapEvents,
 } from "react-leaflet";
+import { PlanNext } from "./recommend";
 import type { Advice, Bounds, DayData, GridMeta, GridPoint, LatLng, MetricKey } from "./types";
 import { fetchDay, fetchHeatmapBounds, heatmapUrl, fetchMeta, fetchRegionData, toGeoJSONPolygon } from "./api";
 import temperatureIcon from "./assets/temperature.png";
@@ -346,7 +348,7 @@ const LEGENDS: Record<MetricKey, LegendSpec> = {
     min: 20,
     max: 40,
     openEnd: true,
-    stops: ["#3b4cc0", "#7ab6e8", "#f5e663", "#f39c3d", "#c0392b"],
+    stops: ["#3b4cc0", "#7ab6e8", "#f5e663", "#f39c3d", "#c0392b"], // = COLORMAPS.temperature (heatmap_service.py)
     low: "Cooler",
     high: "Hotter",
   },
@@ -354,7 +356,8 @@ const LEGENDS: Record<MetricKey, LegendSpec> = {
     title: "Soil moisture",
     unit: "%",
     min: 0,
-    max: 100,
+    max: 50,
+    openEnd: true,
     stops: ["#8c5a2b", "#d9b36c", "#7fc97f", "#2c8f6d", "#1d5fa8"],
     low: "Drier",
     high: "Wetter",
@@ -365,7 +368,7 @@ const LEGENDS: Record<MetricKey, LegendSpec> = {
     min: 0,
     max: 50,
     openEnd: true,
-    stops: ["#f1f6fb", "#a8d0f0", "#4f9bdb", "#2461b3", "#2b1f7a"],
+    stops: ["#9be7ff", "#35b6ff", "#2ecc71", "#f7e11e", "#ff8c1a", "#e5252a"], // = COLORMAPS.precipitation
     low: "Less",
     high: "More",
   },
@@ -2155,8 +2158,8 @@ export function FarmMap() {
   // the slide-out menu on the left
   const [menuOpen, setMenuOpen] = useState(false);
   // what the bottom sheet shows: the Dashboard, the detailed Condition view, the My Farms screen,
-  // or the Set up farm form (opens right after a new outline is finished)
-  const [sheetView, setSheetView] = useState<"dashboard" | "condition" | "farms" | "setup">("dashboard");
+  // the Set up farm form (opens right after a new outline is finished), or the Plan next season screen
+  const [sheetView, setSheetView] = useState<"dashboard" | "condition" | "farms" | "setup" | "plan">("dashboard");
   // the "My Farms" drop-down in the menu
   const [farmsOpen, setFarmsOpen] = useState(false);
   // the "Deleted. Undo" message, and the timer that hides it
@@ -2419,7 +2422,7 @@ export function FarmMap() {
       setActiveId(next.id);
       setPolygon({ closed: true, points: next.points });
       setFitNonce((n) => n + 1);
-      if (sheetView === "condition") setSheetView("dashboard");
+      if (sheetView === "condition" || sheetView === "plan") setSheetView("dashboard");
     } else {
       setActiveId(null);
       setPolygon(EMPTY);
@@ -2604,7 +2607,7 @@ export function FarmMap() {
   const farmDrawBar = drawing && !poly.closed && !plotDraw;
   // Readings sit on the map while the sheet is collapsed; when the sheet is open the dashboard shows them.
   // On a wide window or landscape phone the sheet leaves room beside it, so they stay on the map in every state.
-  const showConditions = poly.closed && !!activeFarm && (sheet === "peek" || wide) && sheetView !== "setup" && !plotDraw && !farmDrawBar;
+  const showConditions = poly.closed && !!activeFarm && (sheet === "peek" || wide) && sheetView !== "setup" && sheetView !== "plan" && !plotDraw && !farmDrawBar;
   // The day picker (with the legend of the selected layer) floats above the sheet.
   const showTimeline =
     !!dates && !!date && (poly.closed || !!dataLayer) && !plotDraw && !farmDrawBar && !(selectedPlot && sheetView !== "setup");
@@ -2630,7 +2633,7 @@ export function FarmMap() {
   // the selected day is more than 30 days ago
   const stale = !!date && Date.now() - new Date(`${date}T00:00:00`).getTime() > 30 * 86400000;
   const sheetTitle =
-    sheetView === "farms" ? "MY FARMS" : sheetView === "setup" ? "SET UP FARM" : sheetView === "dashboard" ? "DASHBOARD" : (activeFarm?.name ?? "Condition").toUpperCase();
+    sheetView === "farms" ? "MY FARMS" : sheetView === "setup" ? "SET UP FARM" : sheetView === "plan" ? "PLAN NEXT SEASON" : sheetView === "dashboard" ? "DASHBOARD" : (activeFarm?.name ?? "Condition").toUpperCase();
   const viewClass = sheetView === "condition" ? "" : sheetView === "setup" ? "setup" : "banner";
   const heatUrl = dataLayer && imageDate ? heatmapUrl(dataLayer, imageDate) : null;
   const bounds = dataLayer ? heatBounds[dataLayer] : undefined;
@@ -2650,6 +2653,8 @@ export function FarmMap() {
           maxNativeZoom={18}
           maxZoom={19}
         />
+        {/* own pane: above the satellite tiles, below the farm and plot outlines */}
+        <Pane name="heat" className="heat-pane" style={{ zIndex: 350 }}>
         {heatUrl && bounds && (
           <ImageOverlay
             key={`${dataLayer}-${overlayTry}`} // a new layer has different corners, so start a fresh overlay
@@ -2668,6 +2673,7 @@ export function FarmMap() {
             }}
           />
         )}
+        </Pane>
         <DrawLayer
           poly={poly}
           setPolygon={setPolygon}
@@ -2972,6 +2978,13 @@ export function FarmMap() {
               onShowUndo={showUndo}
               onClearUndo={hideUndo}
             />
+          ) : sheetView === "plan" ? (
+            <PlanNext
+              onBack={() => {
+                setSheetView("dashboard");
+                setSheet("half");
+              }}
+            />
           ) : sheetView === "dashboard" || sheetView === "setup" ? (
             <>
             <div className="dash-card">
@@ -3048,7 +3061,7 @@ export function FarmMap() {
                     </button>
                   )}
                   {activeFarm && poly.closed && (
-                    <button className="dash-details plan-entry" onClick={() => { window.location.hash = "plan"; }}>
+                    <button className="dash-details plan-entry" onClick={() => { setSheetView("plan"); setSheet("full"); }}>
                       Plan next season
                     </button>
                   )}

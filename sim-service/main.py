@@ -42,8 +42,6 @@ class RecommendRequest(BaseModel):
 
 def _validate_startup() -> None:
     """Fail fast on configuration (spec §4 style startup validation)."""
-    if not config.DATA_ROOT.exists():
-        raise RuntimeError(f"ORYZON_DATA_ROOT does not exist: {config.DATA_ROOT}")
     if not config.SOIL_FILE.exists():
         raise RuntimeError(f"soil file not found (set ORYZON_SOIL_FILE): {config.SOIL_FILE}")
     if config.IDEAL_YIELD_SOURCE not in ("simulated_potential", "table"):
@@ -89,8 +87,8 @@ def health():
             "cover_term_dap": config.COVER_TERM_DAP,
             "weather_source": config.WEATHER_SOURCE,
             "soil_om_module": config.SOIL_OM_MODULE,
-            "data_root": str(config.DATA_ROOT),
-            "data_root_exists": config.DATA_ROOT.exists(),
+            # "data_root": str(config.DATA_ROOT),
+            # "data_root_exists": config.DATA_ROOT.exists(),
         },
         "runner": {
             "kind": config.RUNNER,
@@ -112,7 +110,7 @@ def candidates():
     }
 
 
-WEATHER = WeatherStore(config.DATA_ROOT)
+WEATHER = WeatherStore()
 SOILS = SoilStore(config.SOIL_FILE)
 ORCHESTRATOR = Orchestrator(build_runner(config.RUNNER), WEATHER, SOILS)
 

@@ -2,6 +2,9 @@
 
 Every value below traces to the spec (AGENT-README.md) or to a decision recorded in
 AUDIT.md section 1 (project owner, 2026-11-15). Change values here, never in code.
+
+No local data store: weather is requested from the NASA POWER API (see store.py) and the soil
+profile file is downloaded once from Hugging Face.
 """
 import os
 from pathlib import Path
@@ -12,25 +15,38 @@ REPO_DIR = SERVICE_DIR.parent
 # DSSAT workspace: one subdir per run (spec §5 "isolated working directory"),
 # laid out as intermediate-input-files/<run>/, intermediate-output-files/<run>/,
 # output-files-for-frontend/<run>.json. The runner writes; this service reads back.
-DSSAT_DIR = REPO_DIR / "dssat"
+DSSAT_DIR = Path(os.environ.get("ORYZON_DSSAT_DIR", str(REPO_DIR / "dssat")))
+
+# --- Soil profiles (DSSAT PH.SOL) ----------------------------------------------------------
+# Downloaded once from a Hugging Face dataset repo and cached by huggingface_hub.
+#   ORYZON_HF_REPO       the dataset repo id, e.g. "JyanMan/OryzonDataset"
+#   ORYZON_SOIL_HF_PATH  where PH.SOL sits inside that repo
+#   HF_TOKEN             only needed if the repo is private
+#   ORYZON_SOIL_FILE     optional: use this local file instead of downloading
+HF_REPO = os.environ.get("ORYZON_HF_REPO", "JyanMan/OryzonDataset")
+SOIL_HF_PATH = os.environ.get(
+    "ORYZON_SOIL_HF_PATH",
+    "oryzon_data/processed/dssat-SOL-files/SoilGrids-for-DSSAT-10km v1.0 (by country)/PH.SOL",
+)
 
 
-# Owner's processed data store (POWER daily, IMERG daily, soil profiles). The data lives
-# outside the repo (AUDIT.md D6) and this service never assumes a machine layout: the
-# location is a deployment seam set via environment variable, validated at startup.
-def _env_path(name: str, what: str) -> Path:
-    value = os.environ.get(name)
-    if not value:
+def _soil_file() -> Path:
+    override = os.environ.get("ORYZON_SOIL_FILE")
+    if override:
+        return Path(override).expanduser().resolve()
+    from huggingface_hub import hf_hub_download
+    try:
+        return Path(hf_hub_download(
+            repo_id=HF_REPO, filename=SOIL_HF_PATH, repo_type="dataset",
+            token=os.environ.get("HF_TOKEN")))
+    except Exception as exc:
         raise RuntimeError(
-            f"{name} is not set. Point it at {what}; the data lives outside this repo, "
-            f"so no default path is assumed. Example: export {name}=/path/to/oryzon_data")
-    return Path(value).expanduser().resolve()
+            f"could not download {SOIL_HF_PATH} from the Hugging Face repo {HF_REPO}: "
+            f"{type(exc).__name__}: {exc}. Upload PH.SOL there (or set ORYZON_SOIL_HF_PATH), "
+            f"set HF_TOKEN if the repo is private, or set ORYZON_SOIL_FILE to a local copy.")
 
-DATA_ROOT = _env_path("ORYZON_DATA_ROOT", "the processed oryzon_data store")
-SOIL_FILE = Path(os.environ.get(
-    "ORYZON_SOIL_FILE",
-    str(DATA_ROOT.parent / "soil-profiles" / "dssat-SOL-files"
-        / "SoilGrids-for-DSSAT-10km v1.0 (by country)" / "PH.SOL")))
+
+SOIL_FILE = _soil_file()
 
 # --- Ranking config (spec §4) ------------------------------------------------------------
 
@@ -40,7 +56,7 @@ IDEAL_YIELD_SOURCE = "simulated_potential"
 IDEAL_TABLE_PATH = SERVICE_DIR / "ideal_table.csv"   # only read when the source above is "table"
 
 WEATHER_YEARS: list[int] | None = None
-# None = the 10 most recent complete years available in the store (spec §4 default).
+# None = the 10 most recent complete years (spec §4 default).
 # A single year gives deterministic behaviour: P10/P90 are then not reported.
 
 # --- Initial conditions (spec §2: built here from the farm record + defaults) --------------
@@ -62,7 +78,8 @@ COVER_RESIDUE = "incorporate"   # all aboveground residue at termination (spec d
 
 # --- Metadata (rule 6); runner supplies DSSAT version + cultivar source at runtime ----------
 
-WEATHER_SOURCE = "NASA POWER daily (T2M/T2M_MAX/T2M_MIN/RH2M/SRAD) + GPM IMERG daily rain"
+WEATHER_SOURCE = ("NASA POWER daily API (T2M/T2M_MAX/T2M_MIN/RH2M/ALLSKY_SFC_SW_DWN/PRECTOTCORR); "
+                  "rainfall is POWER PRECTOTCORR, not GPM IMERG")
 SOIL_OM_MODULE = "Godwin (DSSAT MESOM=G)"   # chosen and documented per spec §8; re-confirm at calibration
 
 # --- Runner selection ----------------------------------------------------------------------
