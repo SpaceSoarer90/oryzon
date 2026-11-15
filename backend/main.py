@@ -22,6 +22,7 @@ from shapely import contains_xy
 from shapely.geometry import shape
 
 from heatmap_service import build_heatmaps
+from fastapi.middleware.cors import CORSMiddleware
 
 import os
 from fnmatch import fnmatch
@@ -295,6 +296,12 @@ print("FINISHED FETCHING DATA")
 HEATMAPS = build_heatmaps(LAYERS, DATASETS)
 
 app = FastAPI(title="Field Shift API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://oryzon-pied.vercel.app", "http://localhost:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def get_layer(name: str) -> Layer:
