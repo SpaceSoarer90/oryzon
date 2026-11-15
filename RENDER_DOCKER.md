@@ -8,14 +8,15 @@ and Python process therefore share a compatible libc runtime.
 
 ## Render service settings
 
-For the existing recommendation API web service:
+Create a new Render **Web Service** from this repository and select **Docker** as its runtime. (Render does not necessarily allow an existing native-runtime service to be converted in place.)
 
-1. Change the service runtime/environment to **Docker**.
+1. Select this repository and the branch containing this change.
 2. Set the Dockerfile path to `./Dockerfile`.
 3. Set the Docker build context to the repository root (`.`).
 4. Leave the root directory empty.
 5. Leave the start command empty so the Dockerfile's startup command is used.
-6. Deploy the branch containing this change.
+6. Add the Hugging Face environment variables listed below.
+7. Deploy, then point the frontend's simulation API URL at the new Render service. Keep the old service until the new `/health` endpoint and a test simulation both work.
 
 The container listens on Render's injected `PORT` (defaulting to 8000 locally).
 
