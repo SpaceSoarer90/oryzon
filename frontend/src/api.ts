@@ -3,7 +3,7 @@ import type { LatLng, DayData, DayGrid, GridMeta, MetricKey, Bounds, Branch, Can
 // Both base URLs come from the environment when set; the defaults match the current
 // deployment (weather API on Render) and local development (recommendation service).
 const API = ((import.meta.env.VITE_API_URL as string | undefined) ?? "https://oryzon-wyyo.onrender.com").replace(/\/$/, "");
-const SIM_API = ((import.meta.env.VITE_SIM_API_URL as string | undefined) ?? "http://localhost:8002").replace(/\/$/, "");
+const SIM_API = ((import.meta.env.VITE_SIM_API_URL as string | undefined) ?? "http://oryzon-wyyo.onrender.com").replace(/\/$/, "");
 
 // Leaflet uses [lat, lng]; GeoJSON uses [lng, lat] and the ring must be closed.
 export function toGeoJSONPolygon(points: LatLng[]): GeoJSON.Polygon {

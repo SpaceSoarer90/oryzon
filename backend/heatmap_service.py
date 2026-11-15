@@ -20,16 +20,33 @@ FINE_SCALE = 2
 IMAGE_CACHE = 32       # rendered PNGs remembered per layer
 
 
+def _even(colors):
+    """Spread colours evenly from 0 to 1. The legend on the map (LEGENDS in map.tsx) is a CSS gradient with
+    evenly spaced stops, so evenly spaced stops here make the legend match the picture exactly."""
+    n = len(colors) - 1
+    return [(i / n, c) for i, c in enumerate(colors)]
+
+
+# Worldview-style palettes. If you change one, change the matching `stops` in LEGENDS (map.tsx).
+COLORMAPS = {
+    "precipitation": _even(["#9be7ff", "#35b6ff", "#2ecc71", "#f7e11e", "#ff8c1a", "#e5252a"]),
+    "temperature":   _even(["#3b4cc0", "#7ab6e8", "#f5e663", "#f39c3d", "#c0392b"]),
+    "soilMoisture":  _even(["#8c5a2b", "#d9b36c", "#7fc97f", "#2c8f6d", "#1d5fa8"]),
+}
+
+
 class HeatmapLayer:
     """One layer (precipitation, temperature, ...) ready to render any of its days."""
 
-    def __init__(self, name, by_date, locations, meta, *, color, low_color, fade_until=0.0, scale=None, opacity=0.8):
+    def __init__(self, name, by_date, locations, meta, *, color, low_color, fade_until=0.0, scale=None, opacity=0.8,
+                 colormap=None, vmin=None, vmax=None):
         self.name = name
         self.by_date = by_date              # date -> table with columns lat, lon, <name>
         self.color = color                  # colour of the HIGH end
         self.low_color = low_color          # colour of the LOW end (None = fade by opacity instead)
         self.fade_until = fade_until        # how much of the low end of the range is see-through (see GridHeatmap.render)
         self.opacity = opacity
+        self.colormap = colormap            # [(position 0..1, '#hex'), ...] or None
 
         step_lat, step_lon = meta["cellSize"]["lat"], meta["cellSize"]["lon"]
         if step_lat is None or step_lon is None:
@@ -55,6 +72,9 @@ class HeatmapLayer:
         # Top of the range is the 95th percentile so a few extreme days don't wash everything else out.
         lo, hi = meta["range"]["min"], meta["range"]["p95"]
         self.vmin, self.vmax = (lo, hi) if hi > lo else (lo, meta["range"]["max"])
+        # vmin/vmax from the config win, so the legend on the map can state the exact range.
+        if vmin is not None and vmax is not None and vmax > vmin:
+            self.vmin, self.vmax = float(vmin), float(vmax)
 
         # Remember the last few images per layer: scrubbing back and forth costs nothing.
         self.render = lru_cache(maxsize=IMAGE_CACHE)(self._render)
@@ -76,6 +96,7 @@ class HeatmapLayer:
             min_value=self.vmin,
             max_value=self.vmax,
             opacity=self.opacity,
+            colormap=self.colormap,
         )
 
 
@@ -86,4 +107,8 @@ def build_heatmap(name: str, layer, cfg: dict) -> HeatmapLayer:
         color=cfg.get("color", "#2f7fd1"),
         low_color=cfg.get("low_color"),
         fade_until=cfg.get("fade", 0.35),
+        opacity=cfg.get("opacity", 0.8),
+        colormap=cfg.get("colormap", COLORMAPS.get(name)),
+        vmin=cfg.get("vmin"),
+        vmax=cfg.get("vmax"),
     )

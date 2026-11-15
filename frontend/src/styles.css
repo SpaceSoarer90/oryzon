@@ -2997,3 +2997,17 @@ body {
     grid-template-columns: repeat(3, 1fr);
   }
 }
+
+/* ---------- heat map on the ground (NASA Worldview look) ---------- */
+/* The colours sit in their own pane. The PNG carries per-pixel transparency (low values are clear),
+   so the terrain shows through wherever there is little signal. */
+.heat-pane {
+  pointer-events: none;
+}
+
+.heat-pane .leaflet-image-layer {
+  /* a touch more punch so the ramp separates from dark ocean imagery */
+  filter: saturate(1.15) contrast(1.05);
+  /* for more relief showing through the colour, try mix-blend-mode: overlay or soft-light (both subtler) */
+  mix-blend-mode: normal;
+}

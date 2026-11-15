@@ -8,6 +8,7 @@ import {
   CircleMarker,
   Marker,
   ImageOverlay,
+  Pane,
   Tooltip,
   useMap,
   useMapEvents,
@@ -347,7 +348,7 @@ const LEGENDS: Record<MetricKey, LegendSpec> = {
     min: 20,
     max: 40,
     openEnd: true,
-    stops: ["#3b4cc0", "#7ab6e8", "#f5e663", "#f39c3d", "#c0392b"],
+    stops: ["#3b4cc0", "#7ab6e8", "#f5e663", "#f39c3d", "#c0392b"], // = COLORMAPS.temperature (heatmap_service.py)
     low: "Cooler",
     high: "Hotter",
   },
@@ -355,7 +356,8 @@ const LEGENDS: Record<MetricKey, LegendSpec> = {
     title: "Soil moisture",
     unit: "%",
     min: 0,
-    max: 100,
+    max: 50,
+    openEnd: true,
     stops: ["#8c5a2b", "#d9b36c", "#7fc97f", "#2c8f6d", "#1d5fa8"],
     low: "Drier",
     high: "Wetter",
@@ -366,7 +368,7 @@ const LEGENDS: Record<MetricKey, LegendSpec> = {
     min: 0,
     max: 50,
     openEnd: true,
-    stops: ["#f1f6fb", "#a8d0f0", "#4f9bdb", "#2461b3", "#2b1f7a"],
+    stops: ["#9be7ff", "#35b6ff", "#2ecc71", "#f7e11e", "#ff8c1a", "#e5252a"], // = COLORMAPS.precipitation
     low: "Less",
     high: "More",
   },
@@ -2651,6 +2653,8 @@ export function FarmMap() {
           maxNativeZoom={18}
           maxZoom={19}
         />
+        {/* own pane: above the satellite tiles, below the farm and plot outlines */}
+        <Pane name="heat" className="heat-pane" style={{ zIndex: 350 }}>
         {heatUrl && bounds && (
           <ImageOverlay
             key={`${dataLayer}-${overlayTry}`} // a new layer has different corners, so start a fresh overlay
@@ -2669,6 +2673,7 @@ export function FarmMap() {
             }}
           />
         )}
+        </Pane>
         <DrawLayer
           poly={poly}
           setPolygon={setPolygon}

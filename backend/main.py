@@ -72,14 +72,15 @@ COL_YEAR, COL_DOY = "YEAR", "DOY"  # ...otherwise the date is built from year + 
 #            0.35 (default) = the lowest values fade out so they don't look like white haze over the map.
 DATASETS = {
     "precipitation": {"file": "PRECTOTCORR_2025.csv", "format": "csv", "column": "PRECTOTCORR", "decimals": 2,
-                      "color": "#0b3d91", "low_color": None, "fade": 0.1 },
+                      "vmin": 0, "vmax": 50, "fade": 0.06 },   # under ~3 mm fades out; legend says 0-50+ mm
     "temperature":   {"file": "T2M_2025.csv",         "format": "csv", "column": "T2M",         "decimals": 1,
-                      "color": "#c0392b", "low_color": None},
+                      "vmin": 20, "vmax": 40, "fade": 0},      # every cell coloured; legend says 20-40+ degC
     # FLDAS monthly soil moisture. It has four depths (SoilMoi00_10cm_tavg, ...10_40cm..., ...40_100cm..., ...100_200cm...);
     # this is the top 0-10 cm. To serve another depth, add one more entry here with that variable name.
     # If `file`/`column` are wrong the server still starts, and /api/layers says why.
     "soilMoisture":  {"file": "fldas_monthly_ph_2025.nc4", "format": "netcdf", "column": "SoilMoi00_10cm_tavg",
-                      "decimals": 2, "period": "month", "color": "#43c864", "low_color": None},
+                      "decimals": 2, "period": "month",
+                      "vmin": 0, "vmax": 0.5, "fade": 0},      # m3/m3; legend says 0-50 %
 }
 
 Box = tuple[float, float, float, float]   # (west, south, east, north)
