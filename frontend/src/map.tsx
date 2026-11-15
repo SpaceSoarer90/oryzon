@@ -14,8 +14,10 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import { PlanNext } from "./recommend";
+import { CropDaysOverview, CropPlanFacts, FutureCrops } from "./planVisuals";
+import { CROP_DATA } from "./cropData";
 import { Tutorial, TOUR_REPLAY_EVENT, type TourControl, type TourScene } from "./tutorial";
-import type { Advice, Bounds, DayData, GridMeta, GridPoint, LatLng, MetricKey } from "./types";
+import type { Advice, Bounds, DayData, FuturePlan, GridMeta, GridPoint, LatLng, MetricKey } from "./types";
 import { fetchDay, fetchHeatmapBounds, heatmapUrl, fetchMeta, fetchRegionData, toGeoJSONPolygon } from "./api";
 import temperatureIcon from "./assets/temperature.png";
 import soilMoistureIcon from "./assets/soil-moisture.png";
@@ -287,6 +289,7 @@ export interface Farm {
   postHarvest?: PostHarvest; // only asked when the lot is newly harvested
   details?: FarmDetails;
   plots?: Plot[]; // each plot: its name, area, past crop records and soil readings
+  futurePlans?: FuturePlan[]; // the crop before rice and the rice the farmer chose in Plan next season
 }
 export interface FarmStore {
   farms: Farm[];
@@ -417,7 +420,7 @@ function getAdvice(data: DayData[], index: number): Advice {
 
 // Area of the outlined field in hectares. Points are flattened to metres around the shape's centre,
 // then the shoelace formula is applied (accurate to well under 1% for field-sized shapes).
-function polygonAreaHa(points: LatLng[]): number {
+export function polygonAreaHa(points: LatLng[]): number {
   if (points.length < 3) return 0;
   const R = 6371008.8; // mean Earth radius, metres
   const rad = (d: number) => (d * Math.PI) / 180;
@@ -1700,6 +1703,9 @@ function cropPhoto(key: string): string {
 function CropGuide() {
   return (
     <div className="crop-grid">
+      <div className="crop-overview">
+        <CropDaysOverview />
+      </div>
       {CROP_GUIDE.map((c) => {
         const src = cropPhoto(c.key);
         const benefits: [string, string | undefined][] = [
@@ -1741,6 +1747,7 @@ function CropGuide() {
                 </div>
               </dl>
             </div>
+            {CROP_DATA[c.key] && <CropPlanFacts info={CROP_DATA[c.key]} />}
             {c.guide && (
               <details className="crop-how">
                 <summary>Learn how to plant</summary>
@@ -2909,6 +2916,21 @@ export function FarmMap() {
     setSheet("full");
   }
 
+  // The farmer picked a crop (or a rice variety) in Plan next season: keep it on that farm so the Dashboard can show it.
+  // One crop before rice and one rice are kept; a new pick of the same kind replaces the old one.
+  function saveFuturePlan(farmId: string, plan: FuturePlan, opts?: { clearPre?: boolean }) {
+    setFarms((prev) =>
+      prev.map((f) => {
+        if (f.id !== farmId) return f;
+        const kept = (f.futurePlans ?? []).filter((p) => p.id !== plan.id && !(opts?.clearPre && p.id === "pre"));
+        return { ...f, futurePlans: [...kept, plan] };
+      }),
+    );
+  }
+  function removeFuturePlan(farmId: string, planId: string) {
+    setFarms((prev) => prev.map((f) => (f.id === farmId ? { ...f, futurePlans: (f.futurePlans ?? []).filter((p) => p.id !== planId) } : f)));
+  }
+
   // "Next" on the Set up farm screen: save the answers on the farm and show its dashboard.
   function saveSetup(patch: { name: string; location: string; details: FarmDetails; plots: Plot[] }) {
     setFarms((prev) => prev.map((f) => (f.id === activeId ? { ...f, ...patch } : f)));
@@ -3633,6 +3655,7 @@ export function FarmMap() {
           ) : sheetView === "plan" ? (
             <PlanNext
               initialBranch={activeFarm?.postHarvest === "yield_crop" ? "yield_crops" : undefined}
+              onChoose={saveFuturePlan}
               onBack={() => {
                 setSheetView("dashboard");
                 setSheet("half");
@@ -3668,6 +3691,17 @@ export function FarmMap() {
                   </svg>
                 </span>
               </button>
+            )}
+            {poly.closed && activeFarm && (activeFarm.futurePlans?.length ?? 0) > 0 && (
+              <FutureCrops
+                plans={activeFarm.futurePlans ?? []}
+                areaHa={polygonAreaHa(activeFarm.points)}
+                onRemove={(id) => removeFuturePlan(activeFarm.id, id)}
+                onOpen={() => {
+                  setSheetView("plan");
+                  setSheet("full");
+                }}
+              />
             )}
             <div className="dash-card">
               {!poly.closed ? (

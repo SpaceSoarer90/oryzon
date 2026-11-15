@@ -112,3 +112,26 @@ export interface ExperimentPreset {
   fertilizer_kg_n_ha: number;
   file_planting_date: string;
 }
+
+// ---- Crops the farmer has chosen for coming seasons (saved on the farm, shown on the Dashboard) ----
+// Money is per hectare, in pesos: income = yield x farmgate price, cost = seed / planting material.
+export interface PlanEcon {
+  incomeLow: number;
+  incomeMid: number;
+  incomeHigh: number;
+  costLow: number;
+  costMid: number;
+  costHigh: number;
+}
+export interface FuturePlan {
+  id: "pre" | "rice";            // one crop before rice, and one rice
+  kind: "yield_crop" | "rice";
+  name: string;                  // "Maize", or the rice variety
+  cropKey: string | null;        // key into CROP_DATA for yield crops
+  plantingDate: string;          // YYYY-MM-DD
+  harvestDate: string;           // YYYY-MM-DD
+  maturityDays: number;
+  yieldKgHa: number | null;
+  econ: PlanEcon | null;
+  savedAt: number;
+}

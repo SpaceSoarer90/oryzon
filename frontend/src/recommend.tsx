@@ -3,10 +3,12 @@
    Top-3 lists display best first: rank 1, rank 2, rank 3, with rank badges.
    "percent of ideal" is relative yield (RY) — the term RY never appears in the UI.
    Absolute yields are never summed (rule 4): the end screen shows separate figures. */
-import { useEffect, useRef, useState } from "react";
-import { centroid, loadStore, type Farm } from "./map";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { centroid, loadStore, polygonAreaHa, type Farm } from "./map";
 import { fetchCandidates, fetchExperiments, getRecommendation, startRecommendation, HttpError } from "./api";
-import type { Branch, Candidates, CropEntry, ExperimentPreset, RecommendationResult, RangeStat, VarietyEntry } from "./types";
+import type { Branch, Candidates, CropEntry, ExperimentPreset, FuturePlan, RecommendationResult, RangeStat, VarietyEntry } from "./types";
+import { cropEcon, cropInfo, cropKey, isoAdd, riceEcon } from "./cropData";
+import { EconChart, EconSummary, HarvestTile, MaturityChart, OtherCostField, type EconRow, type MaturityRow } from "./planVisuals";
 
 const BRANCHES: { value: Branch; label: string; hint: string }[] = [
   { value: "rice", label: "Rice", hint: "Which rice variety to plant next" },
@@ -141,6 +143,85 @@ function FarmTips() {
   );
 }
 
+// ---- Maturity and money views for the result screens ----
+
+// When the simulation gave no maturity for a crop, use the reference table (typical days and the usual range).
+function refStat(name: string): RangeStat | null {
+  const info = cropInfo(name);
+  return info ? { mean: info.days.typ, p10: info.days.min, p90: info.days.max } : null;
+}
+
+const RANK_TONE = ["r1", "r2", "r3"] as const;
+
+function CropCompare({ crops, plantingDate, areaHa, otherCostHa }: { crops: CropEntry[]; plantingDate: string; areaHa: number; otherCostHa: number }) {
+  const sorted = [...crops].sort((a, b) => a.rank - b.rank);
+  const rows: MaturityRow[] = sorted.map((c, i) => {
+    const info = cropInfo(c.crop);
+    const stat = c.maturity_days ?? refStat(c.crop);
+    return {
+      key: c.crop,
+      label: `${info?.emoji ?? "🌱"} ${info?.label ?? c.crop}`,
+      badge: `#${c.rank}`,
+      sub: c.maturity_days ? "simulated" : "reference data",
+      segs: stat
+        ? [{ from: 0, days: stat.mean, lo: stat.p10 ?? undefined, hi: stat.p90 ?? undefined, label: info?.label ?? c.crop, tone: RANK_TONE[Math.min(i, 2)] }]
+        : [],
+    };
+  }).filter((r) => r.segs.length > 0);
+  const money: EconRow[] = sorted.flatMap((c) => {
+    const info = cropInfo(c.crop);
+    return info ? [{ key: c.crop, label: `${info.emoji} ${info.label}`, badge: `#${c.rank}`, econ: cropEcon(info) }] : [];
+  });
+  return (
+    <>
+      {rows.length > 0 && <MaturityChart rows={rows} startDate={plantingDate} title="When each crop is ready" note="Starting from your planting date." />}
+      {money.length > 0 && <EconChart rows={money} areaHa={areaHa} otherCostHa={otherCostHa} title="Income and cost" />}
+    </>
+  );
+}
+
+function RiceCompare({
+  varieties,
+  plantingDate,
+  areaHa,
+  otherCostHa,
+  preDays,
+}: {
+  varieties: VarietyEntry[];
+  plantingDate: string;
+  areaHa: number;
+  otherCostHa: number;
+  preDays: number | null;
+}) {
+  const sorted = [...varieties].sort((a, b) => a.rank - b.rank);
+  const rows: MaturityRow[] = sorted.flatMap((v, i) => {
+    const rice = v.maturity_days;
+    if (!rice) return [];
+    const fromStart = v.days_from_plan_start?.mean ?? rice.mean;
+    const riceStart = Math.max(0, fromStart - rice.mean);
+    const segs: MaturityRow["segs"] = [];
+    if (v.pre_crop && riceStart > 0) {
+      segs.push({ from: 0, days: Math.min(preDays ?? riceStart, riceStart), label: v.pre_crop.id, tone: "pre" });
+    }
+    segs.push({ from: riceStart, days: rice.mean, lo: rice.p10 ?? undefined, hi: rice.p90 ?? undefined, label: "Rice", tone: RANK_TONE[Math.min(i, 2)] });
+    return [{ key: v.variety, label: v.variety, badge: `#${v.rank}`, segs }];
+  });
+  const money: EconRow[] = sorted.map((v) => ({ key: v.variety, label: v.variety, badge: `#${v.rank}`, econ: riceEcon(v.rice_actual.mean) }));
+  return (
+    <>
+      {rows.length > 0 && (
+        <MaturityChart
+          rows={rows}
+          startDate={plantingDate}
+          title="When each rice variety is ready"
+          note={sorted[0]?.pre_crop ? "The gold bar is the crop before rice; the green bars are the rice that follows." : "Starting from your planting date."}
+        />
+      )}
+      {money.length > 0 && <EconChart rows={money} areaHa={areaHa} otherCostHa={otherCostHa} title="Rice income and cost" />}
+    </>
+  );
+}
+
 type Phase =
   | { kind: "form" }
   | { kind: "running"; runId: string; label: string }
@@ -148,7 +229,16 @@ type Phase =
   | { kind: "varieties"; result: RecommendationResult }
   | { kind: "yields"; result: RecommendationResult };
 
-export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initialBranch?: Branch }) {
+export function PlanNext({
+  onBack,
+  initialBranch,
+  onChoose,
+}: {
+  onBack?: () => void;
+  initialBranch?: Branch;
+  // called when the farmer picks a crop or a rice variety, so it can be saved on the farm and shown on the Dashboard
+  onChoose?: (farmId: string, plan: FuturePlan, opts?: { clearPre?: boolean }) => void;
+}) {
   const [store] = useState(() => loadStore());
   const [farmId, setFarmId] = useState(store.activeId ?? store.farms[0]?.id ?? "");
   const [branch, setBranch] = useState<Branch>(initialBranch ?? "rice");
@@ -175,6 +265,11 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
   const preset = presets.find((x) => x.id === experimentId) ?? null;
   // A preset fixes how the rice is established (transplanted vs. direct-seeded).
   const effectiveEstablishment = preset ? preset.establishment : establishment;
+  const areaHa = farm ? polygonAreaHa(farm.points) : 0;
+  const [otherCost, setOtherCost] = useState(""); // other costs per hectare, typed by the farmer
+  const otherCostHa = Number(otherCost) > 0 ? Number(otherCost) : 0;
+  const [added, setAdded] = useState<{ pre?: string; rice?: string }>({}); // what was added to the Dashboard in this visit
+  const preChoice = useRef<{ name: string; days: number } | null>(null); // the crop before rice the farmer picked
 
   useEffect(() => {
     // The service sleeps when idle and can take a minute to wake: keep trying instead of giving up on the first miss.
@@ -353,6 +448,62 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
   // Match the name from the results to that list, ignoring upper/lower case; fall back to the name as given.
   const preCropId = (name: string) =>
     cands?.yield_crops.find((id) => id.trim().toLowerCase() === name.trim().toLowerCase()) ?? name;
+
+  // The farmer picked a crop before rice: save it on the farm (it appears on the Dashboard), then go on to the rice step.
+  function chooseCrop(c: CropEntry) {
+    if (farm && pdate) {
+      const info = cropInfo(c.crop);
+      const days = c.maturity_days?.mean ?? info?.days.typ ?? null;
+      if (days != null) {
+        const plan: FuturePlan = {
+          id: "pre",
+          kind: "yield_crop",
+          name: info?.label ?? c.crop,
+          cropKey: cropKey(c.crop),
+          plantingDate: pdate,
+          harvestDate: isoAdd(pdate, days),
+          maturityDays: Math.round(days),
+          yieldKgHa: info ? info.yieldT.typ * 1000 : null,
+          econ: info ? cropEcon(info) : null,
+          savedAt: Date.now(),
+        };
+        onChoose?.(farm.id, plan);
+        preChoice.current = { name: plan.name, days: plan.maturityDays };
+        setAdded((a) => ({ ...a, pre: plan.name }));
+      }
+    }
+    launch(preCropId(c.crop));
+  }
+
+  // The farmer picked a rice variety: save it on the farm.
+  function chooseRice(v: VarietyEntry) {
+    const riceDays = v.maturity_days?.mean;
+    if (!farm || !pdate || riceDays == null) return;
+    const fromStart = v.days_from_plan_start?.mean ?? riceDays;
+    const plan: FuturePlan = {
+      id: "rice",
+      kind: "rice",
+      name: v.variety,
+      cropKey: null,
+      plantingDate: isoAdd(pdate, Math.max(0, fromStart - riceDays)),
+      harvestDate: isoAdd(pdate, fromStart),
+      maturityDays: Math.round(riceDays),
+      yieldKgHa: v.rice_actual.mean,
+      econ: riceEcon(v.rice_actual.mean),
+      savedAt: Date.now(),
+    };
+    onChoose?.(farm.id, plan, { clearPre: !v.pre_crop });
+    setAdded((a) => ({ ...a, rice: v.variety }));
+  }
+  const riceAction = (v: VarietyEntry) => {
+    if (!v.maturity_days) return null;
+    const done = added.rice === v.variety;
+    return (
+      <button type="button" className={`plan-add ${done ? "done" : ""}`} disabled={done} onClick={() => chooseRice(v)}>
+        {done ? "✓ Added to your dashboard" : "Plant this variety"}
+      </button>
+    );
+  };
 
   const byRank = (list: VarietyEntry[]) => [...list].sort((a, b) => a.rank - b.rank);
 
@@ -589,15 +740,22 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
                   <b>{c.crop}</b>
                   <div>{pctOf(c.relative_yield)}</div>
                   <div className="plan-raw">mean yield {kg(c.actual_yield.mean)}</div>
-                  {maturityLabel(c.maturity_days, pdate)}
+                  {maturityLabel(c.maturity_days ?? refStat(c.crop), pdate, c.maturity_days ? "Estimated maturity" : "Typical maturity (reference data)")}
                 </div>
+                {(() => {
+                  const d = c.maturity_days?.mean ?? cropInfo(c.crop)?.days.typ;
+                  return d != null && pdate ? <HarvestTile iso={isoAdd(pdate, d)} /> : null;
+                })()}
               </li>
             ))}
           </ol>
+          <CropCompare crops={phase.result.crops ?? []} plantingDate={pdate} areaHa={areaHa} otherCostHa={otherCostHa} />
+          <OtherCostField value={otherCost} onChange={setOtherCost} />
           <h3 className="plan-ask">Which crop will you plant?</h3>
+          <p className="plan-note">Your choice is added to the Dashboard as a future crop.</p>
           <div className="plan-choices">
             {(phase.result.crops ?? []).map((c) => (
-              <button key={c.crop} type="button" className="plan-choice" disabled={starting} aria-busy={starting} onClick={() => launch(preCropId(c.crop))}>
+              <button key={c.crop} type="button" className="plan-choice" disabled={starting} aria-busy={starting} onClick={() => chooseCrop(c)}>
                 <span className="plan-badge" aria-label={`Rank ${c.rank}`}>#{c.rank}</span> {c.crop}
               </button>
             ))}
@@ -619,6 +777,7 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
       {phase.kind === "varieties" && (
         <div className="plan-step">
           <h2>Top 3 rice varieties</h2>
+          {added.pre && <p className="plan-saved">✓ {added.pre} was added to your Dashboard as a future crop.</p>}
           {phase.result.varieties[0]?.pre_crop && (
             <p className="plan-precrop">
               {phase.result.varieties[0].pre_crop.type === "cover" ? "Cover crop" : "Pre-crop"}{" "}
@@ -627,7 +786,15 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
               {phase.result.varieties[0].pre_crop.type === "cover" ? " of aboveground biomass" : ""}
             </p>
           )}
-          <VarietyList varieties={byRank(phase.result.varieties)} plantingDate={pdate} />
+          <VarietyList varieties={byRank(phase.result.varieties)} plantingDate={pdate} action={riceAction} />
+          <RiceCompare
+            varieties={phase.result.varieties}
+            plantingDate={pdate}
+            areaHa={areaHa}
+            otherCostHa={otherCostHa}
+            preDays={preChoice.current?.days ?? null}
+          />
+          <OtherCostField value={otherCost} onChange={setOtherCost} />
           <ResultNotes result={phase.result} />
           <button type="button" className="plan-run" onClick={() => setPhase({ kind: "yields", result: phase.result })}>
             See yields
@@ -662,7 +829,9 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
               {v.pre_crop && v.maturity_days && (
                 <p className="plan-raw">Rice itself: about {Math.round(v.maturity_days.mean)} days after rice planting.</p>
               )}
+              <EconSummary econ={riceEcon(v.rice_actual.mean)} areaHa={areaHa} otherCostHa={otherCostHa} />
               <SoilBlock d={v.soil_delta} />
+              {riceAction(v)}
             </div>
           ))}
           <ResultMetaFooter result={phase.result} />
@@ -674,7 +843,7 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
   );
 }
 
-function VarietyList({ varieties, plantingDate }: { varieties: VarietyEntry[]; plantingDate: string }) {
+function VarietyList({ varieties, plantingDate, action }: { varieties: VarietyEntry[]; plantingDate: string; action?: (v: VarietyEntry) => ReactNode }) {
   return (
     <ol className="plan-ranks">
       {varieties.map((v) => (
@@ -690,7 +859,12 @@ function VarietyList({ varieties, plantingDate }: { varieties: VarietyEntry[]; p
               <div className="plan-raw">Rice itself: about {Math.round(v.maturity_days.mean)} days after rice planting.</div>
             )}
             <SoilBlock d={v.soil_delta} />
+            {action?.(v)}
           </div>
+          {(() => {
+            const d = v.days_from_plan_start?.mean ?? v.maturity_days?.mean;
+            return d != null && plantingDate ? <HarvestTile iso={isoAdd(plantingDate, d)} /> : null;
+          })()}
         </li>
       ))}
     </ol>
