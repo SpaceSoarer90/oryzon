@@ -2105,7 +2105,7 @@ const SHEET_ORDER = ["peek", "half", "full"] as const;
 const TILE_LABEL: Record<MetricKey, string> = { temperature: "Temp", soilMoisture: "Soil", precipitation: "Rain" };
 const STATUS_GLYPH: Record<Level, string> = { good: "✓", watch: "!", alert: "▲", none: "–" };
 
-export function FarmMap({ onBack }: { onBack?: () => void }) {
+export function FarmMap() {
   // Farms saved on earlier visits (empty the first time).
   const [initial] = useState(loadStore);
   const [farms, setFarms] = useState<Farm[]>(initial.farms);
@@ -2699,14 +2699,6 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
           <button className="add-btn" aria-label="Add a new farm" onClick={startNewFarm}>+</button>
         </div>
       </div>
-
-      {onBack && (
-        <button className="back-btn" aria-label="Back to home" onClick={onBack}>
-          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15 5l-7 7 7 7" />
-          </svg>
-        </button>
-      )}
 
       {poly.closed && activeFarm && <div className="farm-label">{activeFarm.name}</div>}
 
