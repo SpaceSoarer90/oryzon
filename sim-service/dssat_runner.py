@@ -96,6 +96,10 @@ class DssatRunner:
     def calibrated_rice_varieties(self) -> list[str]:
         return [vid for vid, _ in self._cultivars()]
 
+    def rice_cultivar_options(self) -> list[dict[str, str]]:
+        """Cultivar IDs and display names parsed directly from RICER048.CUL."""
+        return [{"id": vid, "name": name or vid} for vid, name in self._cultivars()]
+
     def calibrated_yield_crops(self) -> list[str]:
         return []      # none calibrated yet (see module docstring); branch returns empty state
 
