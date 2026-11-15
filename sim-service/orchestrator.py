@@ -269,6 +269,14 @@ class Orchestrator:
             return rebase_management(preset, d) if preset else None
 
         varieties = self.runner.calibrated_rice_varieties()
+        if branch == "rice":
+            selected = req.get("cultivar_ids")
+            if selected is not None:
+                available = set(varieties)
+                invalid = set(selected) - available
+                if not selected or len(selected) > 10 or len(set(selected)) != len(selected) or invalid:
+                    raise ValueError("cultivar_ids must contain 1 to 10 unique IDs from RICER048.CUL")
+                varieties = list(selected)
         crops = self.runner.calibrated_yield_crops()
 
         # ---- Rice branch: every variety, actual + ideal, ranked by mean RY ------------------
