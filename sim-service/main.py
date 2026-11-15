@@ -23,7 +23,7 @@ from pydantic import BaseModel
 
 import config
 from experiment_file import describe, load_presets
-from filex_runner import discover_filex, run_filex
+from filex_runner import discover_filex, run_filex as execute_filex
 from orchestrator import Orchestrator, Progress
 from runner import build_runner
 from store import SoilStore, WeatherStore
@@ -130,7 +130,7 @@ def run_filex(filename: str):
     if not hasattr(RUNNER, "home") or not hasattr(RUNNER, "exe"):
         raise HTTPException(503, "direct FileX execution requires ORYZON_RUNNER=dssat")
     try:
-        return run_filex(RUNNER, config.EXPERIMENTS_DIR, filename)
+        return execute_filex(RUNNER, config.EXPERIMENTS_DIR, filename)
     except FileNotFoundError as exc:
         raise HTTPException(404, str(exc))
     except ValueError as exc:
