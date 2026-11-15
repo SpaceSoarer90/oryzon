@@ -215,7 +215,7 @@ def build_runner(kind: str) -> Runner:
     """Fail fast at startup on an unknown runner name (spec §4 style validation)."""
     if kind == "dssat":            # imported lazily: needs the DSSAT binary + config
         from dssat_runner import DssatRunner
-        return DssatRunner(os.environ.get("ORYZON_DSSAT_HOME", "../dssat/"))
+        return DssatRunner("../dssat/")
     runners: dict[str, type[Runner]] = {"stub": StubRunner}
     if kind not in runners:
         raise RuntimeError(f"unknown runner {kind!r}; known: {sorted(runners) + ['dssat']}")
