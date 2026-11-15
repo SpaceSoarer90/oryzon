@@ -95,3 +95,16 @@ export interface RecRunStatus {
   result: RecommendationResult | null;
   error: string | null;
 }
+
+// A selectable management preset (GET /api/experiments); its id goes in experiment_id.
+export interface ExperimentPreset {
+  id: string;
+  title: string;
+  cultivar: string;
+  cultivar_name: string;
+  establishment: "T" | "DS";
+  irrigation: "automatic" | "scheduled" | "rainfed";
+  fertilizer_events: number;
+  fertilizer_kg_n_ha: number;
+  file_planting_date: string;
+}

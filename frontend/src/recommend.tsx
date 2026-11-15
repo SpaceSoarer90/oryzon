@@ -5,8 +5,8 @@
    Absolute yields are never summed (rule 4): the end screen shows separate figures. */
 import { useEffect, useRef, useState } from "react";
 import { centroid, loadStore, type Farm } from "./map";
-import { fetchCandidates, getRecommendation, startRecommendation } from "./api";
-import type { Branch, Candidates, CropEntry, RecommendationResult, RangeStat, VarietyEntry } from "./types";
+import { fetchCandidates, fetchExperiments, getRecommendation, startRecommendation } from "./api";
+import type { Branch, Candidates, CropEntry, ExperimentPreset, RecommendationResult, RangeStat, VarietyEntry } from "./types";
 
 const BRANCHES: { value: Branch; label: string; hint: string }[] = [
   { value: "rice", label: "Rice", hint: "Which rice variety to plant next" },
@@ -25,6 +25,10 @@ function pctOf(r: RangeStat) {
   const base = `${pct(r.mean)} of ideal`;
   if (r.p10 == null || r.p90 == null) return base;
   return `${base} (${pct(r.p10)}–${pct(r.p90)})`;
+}
+function presetSummary(x: ExperimentPreset) {
+  const est = x.establishment === "T" ? "transplanted" : "direct-seeded";
+  return `${est} · ${x.irrigation} irrigation · ${x.fertilizer_kg_n_ha} kg N/ha in ${x.fertilizer_events} splits`;
 }
 function kg(v: number | null | undefined) {
   return v == null ? "—" : `${Math.round(v).toLocaleString("en-US")} kg DM/ha`;
@@ -45,12 +49,18 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
   const [pdate, setPdate] = useState("");
   const [cands, setCands] = useState<Candidates | null>(null);
   const [candsError, setCandsError] = useState<string | null>(null);
+  const [presets, setPresets] = useState<ExperimentPreset[]>([]);
+  const [experimentId, setExperimentId] = useState(""); // "" = the service's default management
   const [phase, setPhase] = useState<Phase>({ kind: "form" });
   const [progress, setProgress] = useState<{ done: number; total: number | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false); // waiting for the service to accept the request
   const poll = useRef<number | null>(null);
 
   const farm: Farm | null = store.farms.find((f) => f.id === farmId) ?? null;
+  const preset = presets.find((x) => x.id === experimentId) ?? null;
+  // A preset fixes how the rice is established (transplanted vs. direct-seeded).
+  const effectiveEstablishment = preset ? preset.establishment : establishment;
 
   useEffect(() => {
     const c = new AbortController();
@@ -59,6 +69,14 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
       .catch((e) => {
         if (!c.signal.aborted) setCandsError(String(e?.message ?? e));
       });
+    return () => c.abort();
+  }, []);
+  useEffect(() => {
+    // Presets are optional: if the list can't be loaded the picker is simply not shown.
+    const c = new AbortController();
+    fetchExperiments(c.signal)
+      .then((r) => setPresets(r.experiments))
+      .catch(() => { /* no picker */ });
     return () => c.abort();
   }, []);
   useEffect(() => () => { if (poll.current) window.clearInterval(poll.current); }, []);
@@ -85,12 +103,14 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
   function launch(preCrop?: string) {
     if (!farm || !pdate) return;
     setError(null);
+    setStarting(true);
     const [lat, lng] = centroid(farm.points);
     startRecommendation({
-      farm: { lat, lon: lng, establishment },
+      farm: { lat, lon: lng, establishment: effectiveEstablishment },
       branch,
       planting_date: pdate,
       ...(preCrop ? { pre_crop: preCrop } : {}),
+      ...(experimentId ? { experiment_id: experimentId } : {}),
     })
       .then(({ run_id }) => {
         setProgress(null);
@@ -108,7 +128,8 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
           }
         });
       })
-      .catch((e) => setError(String(e?.message ?? e)));
+      .catch((e) => setError(String(e?.message ?? e)))
+      .finally(() => setStarting(false));
   }
 
   const ascending = (list: VarietyEntry[]) => [...list].sort((a, b) => b.rank - a.rank);
@@ -121,8 +142,15 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
           onSubmit={(e) => { e.preventDefault(); launch(); }}
         >
           <header className="plan-top">
-            <button type="button" className="plan-back" onClick={onBack} aria-label="Back to the map">←</button>
-            <h1>Plan next season</h1>
+            <button type="button" className="plan-back" onClick={onBack}>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M15 5l-7 7 7 7" />
+              </svg>
+              Dashboard
+            </button>
+            <p className="plan-intro">
+              Choose what you want to plant and when. We simulate the season under past weather to compare your options.
+            </p>
           </header>
           {store.farms.length === 0 ? (
             <p className="plan-note">Set up a farm on the map first — the plan uses your farm's answers.</p>
@@ -159,14 +187,31 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
               <fieldset className="plan-radios">
                 <legend>How will the rice be established?</legend>
                 <label className="plan-radio">
-                  <input type="radio" name="est" checked={establishment === "T"} onChange={() => setEstablishment("T")} />
+                  <input type="radio" name="est" disabled={!!preset} checked={effectiveEstablishment === "T"} onChange={() => setEstablishment("T")} />
                   <span><b>Transplanted</b></span>
                 </label>
                 <label className="plan-radio">
-                  <input type="radio" name="est" checked={establishment === "DS"} onChange={() => setEstablishment("DS")} />
+                  <input type="radio" name="est" disabled={!!preset} checked={effectiveEstablishment === "DS"} onChange={() => setEstablishment("DS")} />
                   <span><b>Direct-seeded</b></span>
                 </label>
               </fieldset>
+
+              {presets.length > 0 && (
+                <label className="plan-field">
+                  <span>Farming practice</span>
+                  <select value={experimentId} onChange={(e) => setExperimentId(e.target.value)}>
+                    <option value="">Standard practice (default)</option>
+                    {presets.map((x) => (
+                      <option key={x.id} value={x.id}>{x.title || x.id}</option>
+                    ))}
+                  </select>
+                  {preset && (
+                    <small className="plan-raw">
+                      {presetSummary(preset)}. Dates are moved onto your planting date; weather and soil are your farm's.
+                    </small>
+                  )}
+                </label>
+              )}
 
               <label className="plan-field">
                 <span>Planting date</span>
@@ -185,8 +230,15 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
                 {candsError && <> Could not reach the recommendation service: {candsError}</>}
               </p>
 
-              <button className="plan-run" type="submit" disabled={!farm || !pdate}>
-                Get recommendation
+              <button className="plan-run" type="submit" disabled={!farm || !pdate || starting} aria-busy={starting}>
+                {starting ? (
+                  <>
+                    <span className="spinner" aria-hidden="true" />
+                    Starting…
+                  </>
+                ) : (
+                  "Get recommendation"
+                )}
               </button>
             </>
           )}

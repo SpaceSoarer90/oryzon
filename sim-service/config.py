@@ -82,7 +82,15 @@ WEATHER_SOURCE = ("NASA POWER daily API (T2M/T2M_MAX/T2M_MIN/RH2M/ALLSKY_SFC_SW_
                   "rainfall is POWER PRECTOTCORR, not GPM IMERG")
 SOIL_OM_MODULE = "Godwin (DSSAT MESOM=G)"   # chosen and documented per spec §8; re-confirm at calibration
 
+# --- Experiment presets (AUDIT.md §9) ------------------------------------------------------
+# Directory of selectable .RIX management presets (GET /api/experiments). A selected file
+# supplies planting/irrigation/fertilizer management only; its dates are shifted onto the
+# requested planting date. Weather, soil, IC and cultivars still come from the app.
+EXPERIMENTS_DIR = Path(os.environ.get("ORYZON_EXPERIMENTS_DIR", str(SERVICE_DIR / "experiments"))) \
+    .expanduser().resolve()
+
 # --- Runner selection ----------------------------------------------------------------------
 
-# "stub" until the owner's DSSAT runner lands (AUDIT.md §5); build_runner fails on anything else.
-RUNNER = os.environ.get("ORYZON_RUNNER", "stub")
+# "stub" (default) or "dssat" (dssat_runner.DssatRunner: real DSSAT-CSM binary).
+#   ORYZON_DSSAT_HOME = directory built by scripts/install_dssat.sh (dscsm048 + Genotype/ + CDE files)
+RUNNER = os.environ.get("ORYZON_RUNNER", "dssat")
