@@ -107,6 +107,7 @@ export async function startRecommendation(
     planting_date: string;
     pre_crop?: string;
     experiment_id?: string;
+    cultivar_ids?: string[];
   },
   signal?: AbortSignal,
 ): Promise<{ run_id: string }> {

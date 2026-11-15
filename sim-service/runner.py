@@ -14,6 +14,7 @@ Contract notes (spec):
 from __future__ import annotations
 
 import hashlib
+import os
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
@@ -129,6 +130,7 @@ class Runner(Protocol):
     """What the owner's DSSAT environment must expose (AUDIT.md §5)."""
 
     def calibrated_rice_varieties(self) -> list[str]: ...
+    def rice_cultivar_options(self) -> list[dict[str, str]]: ...
     def calibrated_yield_crops(self) -> list[str]: ...
     def dssat_version(self) -> str: ...
     def cultivar_coefficient_source(self) -> str: ...
@@ -151,6 +153,9 @@ class StubRunner:
 
     def calibrated_rice_varieties(self) -> list[str]:
         return list(self.RICE_VARIETIES)
+
+    def rice_cultivar_options(self) -> list[dict[str, str]]:
+        return [{"id": v, "name": v} for v in self.RICE_VARIETIES]
 
     def calibrated_yield_crops(self) -> list[str]:
         return list(self.YIELD_CROPS)

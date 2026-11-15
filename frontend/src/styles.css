@@ -2803,6 +2803,19 @@ body {
   gap: 8px;
 }
 
+.plan-cultivar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.plan-cultivar-actions b {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .plan-radio span {
   display: grid;
 }

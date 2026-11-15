@@ -63,6 +63,7 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
   const [establishment, setEstablishment] = useState<"T" | "DS">("DS");
   const [pdate, setPdate] = useState("");
   const [cands, setCands] = useState<Candidates | null>(null);
+  const [selectedCultivars, setSelectedCultivars] = useState<string[]>([]);
   const [candsError, setCandsError] = useState<string | null>(null);
   const [presets, setPresets] = useState<ExperimentPreset[]>([]);
   const [experimentId, setExperimentId] = useState(""); // "" = the service's default management
@@ -88,7 +89,9 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
     (async () => {
       for (let attempt = 0; attempt < 8 && !c.signal.aborted; attempt++) {
         try {
-          setCands(await fetchCandidates(c.signal));
+          const available = await fetchCandidates(c.signal);
+          setCands(available);
+          setSelectedCultivars((current) => current.filter((id) => available.rice_varieties.some((v) => v.id === id)));
           setCandsError(null);
           return;
         } catch (e) {
@@ -192,7 +195,7 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
   }
 
   function launch(preCrop?: string) {
-    if (!farm || !pdate || starting) return;
+    if (!farm || !pdate || starting || (branch === "rice" && selectedCultivars.length === 0)) return;
     setError(null);
     setStarting(true);
     // If this run fails or is cancelled, return to where the farmer is now (the crop choice, or the form).
@@ -207,6 +210,7 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
       planting_date: pdate,
       ...(preCrop ? { pre_crop: preCrop } : {}),
       ...(experimentId ? { experiment_id: experimentId } : {}),
+      ...(branch === "rice" ? { cultivar_ids: selectedCultivars } : {}),
     }, ctl.signal)
       .then(({ run_id }) => {
         if (ctl.signal.aborted) return;
@@ -319,6 +323,48 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
                 </label>
               )}
 
+              {branch === "rice" && (
+                <fieldset className="plan-radios">
+                  <legend>Which rice cultivars should be simulated?</legend>
+                  <p className="plan-note">
+                    Choose 1–10 cultivars from the installed RICER048.CUL file.
+                    {cands ? ` ${cands.rice_varieties.length} available.` : ""}
+                  </p>
+                  <div className="plan-cultivar-actions">
+                    <button type="button" className="plan-run secondary"
+                      onClick={() => setSelectedCultivars(cands?.rice_varieties.slice(0, 10).map((v) => v.id) ?? [])}
+                      disabled={!cands || cands.rice_varieties.length === 0}>
+                      Select first 10
+                    </button>
+                    <button type="button" className="plan-run secondary"
+                      onClick={() => setSelectedCultivars([])}
+                      disabled={selectedCultivars.length === 0}>
+                      Clear
+                    </button>
+                    <b>{selectedCultivars.length}/10 selected</b>
+                  </div>
+                  {cands?.rice_varieties.map((v) => {
+                    const checked = selectedCultivars.includes(v.id);
+                    return (
+                      <label key={v.id} className="plan-radio">
+                        <input type="checkbox" checked={checked}
+                          disabled={!checked && selectedCultivars.length >= 10}
+                          onChange={(e) => setSelectedCultivars((current) =>
+                            e.target.checked ? [...current, v.id] : current.filter((id) => id !== v.id)
+                          )} />
+                        <span><b>{v.id}</b><small>{v.name}</small></span>
+                      </label>
+                    );
+                  })}
+                  {cands && selectedCultivars.length > 0 && (
+                    <p className="plan-note">
+                      Estimated runs: {selectedCultivars.length * cands.weather_windows * 2}
+                      {" "}({selectedCultivars.length} cultivars × {cands.weather_windows} weather windows × actual/ideal).
+                    </p>
+                  )}
+                </fieldset>
+              )}
+
               <label className="plan-field">
                 <span>Planting date</span>
                 <input
@@ -331,12 +377,14 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
 
               <p className="plan-note">
                 {cands
-                  ? `Simulating with ${cands.rice_varieties.length} rice variety(ies), ${cands.yield_crops.length} calibrated crop(s).`
+                  ? `Available rice cultivars: ${cands.rice_varieties.length}; ${cands.yield_crops.length} calibrated crop(s).`
                   : "Checking what is calibrated on the service…"}
                 {candsError && !cands && <> Could not reach the recommendation service yet ({candsError}). It may be waking up, so we keep trying.</>}
               </p>
 
-              <button className="plan-run" type="submit" disabled={!farm || !pdate || starting} aria-busy={starting}>
+              <button className="plan-run" type="submit"
+            disabled={!farm || !pdate || starting || (branch === "rice" && (selectedCultivars.length === 0 || selectedCultivars.length > 10))}
+            aria-busy={starting}>
                 {starting ? (
                   <>
                     <span className="spinner" aria-hidden="true" />
