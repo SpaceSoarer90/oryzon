@@ -25,6 +25,7 @@ import xarray as xr
 from fastapi import FastAPI, HTTPException, Response
 from shapely import contains_xy
 from shapely.geometry import shape
+from fastapi.middleware.cors import CORSMiddleware
 
 from heatmap_service import build_heatmap
 
@@ -330,6 +331,15 @@ def get_layer(name: str) -> Layer:
 
 
 app = FastAPI(title="Field Shift API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",            # local Vite dev
+        "https://oryzon-pied.vercel.app",   # your deployed frontend, if you still use it
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # ---- Polygon helpers -----------------------------------------------------------------------------------

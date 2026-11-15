@@ -7,4 +7,5 @@ netCDF4
 scipy
 pillow
 psutil
+numpy
 
