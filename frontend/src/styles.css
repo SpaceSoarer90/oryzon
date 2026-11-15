@@ -5048,3 +5048,78 @@ body {
     transform: none;
   }
 }
+
+/* ---------- Plan next season: farming tips while a simulation runs ---------- */
+.plan-tip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin: 4px 0;
+  padding: 14px 16px 10px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--cream);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.plan-tip:active {
+  background: var(--olive);
+}
+.plan-tip:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
+}
+.plan-tip-label {
+  color: var(--olive-dark);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.plan-tip-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 92px; /* keeps the card from jumping in height as tips change */
+  animation: tip-in 0.35s ease both;
+}
+.plan-tip-body b {
+  font-size: 17px;
+  font-weight: 800;
+}
+.plan-tip-body span {
+  font-size: 14px;
+  line-height: 1.4;
+}
+.plan-tip-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.plan-tip-foot small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.plan-tip-bar {
+  display: block;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--olive-dark);
+  transform-origin: left;
+  animation: tip-bar linear both;
+}
+@keyframes tip-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tip-bar {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .plan-tip-body { animation: none; }
+  .plan-tip-bar { animation: none; transform: scaleX(1); opacity: 0.35; }
+}

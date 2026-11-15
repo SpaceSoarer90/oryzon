@@ -49,6 +49,72 @@ const POLL_MS = 2000;           // how often a running simulation is checked (on
 const MAX_FAILS = 8;            // this many checks in a row without an answer (about 2 minutes) and we stop and say so
 const STALL_HINT_MS = 90_000;   // still at 0 runs after this long: explain why
 
+// How the rice cultivars to simulate are chosen.
+type CultivarMode = "best" | "random" | "custom";
+const MAX_CULTIVARS = 10;
+const BEST_COUNT = 3; // how many cultivars "Pick the best for me" simulates
+const CULTIVAR_MODES: { value: CultivarMode; label: string; hint: string }[] = [
+  { value: "best", label: "Pick the best for me", hint: "We choose the cultivars. Fastest option." },
+  { value: "random", label: "Try 10 random cultivars", hint: "Takes a lot longer to simulate." },
+  { value: "custom", label: "I'll choose my own", hint: "Pick up to 10 from the full list." },
+];
+function pickRandom<T>(list: T[], n: number): T[] {
+  const a = [...list];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a.slice(0, n);
+}
+
+// ---- Farming tips shown while a simulation runs ----
+const TIP_MS = 9000; // a tip stays this long, then the next one appears (tapping a tip skips ahead)
+const FARM_TIPS: { title: string; text: string }[] = [
+  { title: "Level the field", text: "A well-levelled field holds water evenly, so seedlings emerge together and less water is wasted." },
+  { title: "Use clean, healthy seed", text: "Good seed gives even emergence and fewer disease problems. Soaking seed in salt water and keeping only the ones that sink removes light, poor grains." },
+  { title: "Watch the water at tillering", text: "Keeping a shallow layer of water in the early weeks helps control weeds, but there is no need to keep the field deeply flooded." },
+  { title: "Alternate wetting and drying", text: "Letting the field dry briefly between irrigations (without stressing the plants) can save water and reduce methane from flooded paddies." },
+  { title: "Split your nitrogen", text: "Applying fertilizer in two or three smaller doses, instead of all at once, lets the crop use more of it and lets less wash away." },
+  { title: "Match fertilizer to the soil", text: "A soil test shows what your field actually needs. It can save money on fertilizer you would not have used." },
+  { title: "Check for pests regularly", text: "Walk the field every few days. Catching planthoppers, stem borers or disease early makes them far easier to manage." },
+  { title: "Keep the harvest moisture right", text: "Harvest when most grains in the panicle have turned straw-colored, and dry the grain soon after to avoid spoilage and broken grains." },
+  { title: "Rotate your crops", text: "Growing something other than rice between seasons, such as mung beans, can break pest cycles and improve the soil." },
+  { title: "Legumes feed the soil", text: "Mung bean and other legumes work with soil bacteria to capture nitrogen from the air. Leaving the residues in the field gives some of it back." },
+  { title: "Return the straw", text: "Straw left or worked back into the field returns organic matter and nutrients to the soil. Burning it loses most of that." },
+  { title: "Plan around the rains", text: "Timing planting so that the critical flowering stage avoids typhoon season and very hot days can protect your yield." },
+  { title: "Keep records", text: "Writing down planting dates, inputs and harvests each season helps you see what worked and makes every future plan better." },
+  { title: "Talk to your neighbors", text: "Farmers' associations and your local agriculture office often share local advice on varieties, pests and water schedules." },
+];
+
+// Rotates on its own, and a tap or click moves to the next tip right away. The timer restarts after every change,
+// so a tip you just tapped always gets its full time on screen.
+function FarmTips() {
+  const [i, setI] = useState(() => Math.floor(Math.random() * FARM_TIPS.length));
+  useEffect(() => {
+    const t = window.setTimeout(() => setI((n) => (n + 1) % FARM_TIPS.length), TIP_MS);
+    return () => window.clearTimeout(t);
+  }, [i]);
+  const tip = FARM_TIPS[i];
+  return (
+    <button
+      type="button"
+      className="plan-tip"
+      onClick={() => setI((n) => (n + 1) % FARM_TIPS.length)}
+      aria-label={`Farming tip: ${tip.title}. ${tip.text} Tap for the next tip.`}
+    >
+      <span className="plan-tip-label">Farming tip</span>
+      <span className="plan-tip-body" key={i}>
+        <b>{tip.title}</b>
+        <span>{tip.text}</span>
+      </span>
+      <span className="plan-tip-foot" aria-hidden="true">
+        <span className="plan-tip-bar" key={`bar-${i}`} style={{ animationDuration: `${TIP_MS}ms` }} />
+        <small>Tap for the next tip</small>
+      </span>
+    </button>
+  );
+}
+
 type Phase =
   | { kind: "form" }
   | { kind: "running"; runId: string; label: string }
@@ -63,6 +129,7 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
   const [establishment, setEstablishment] = useState<"T" | "DS">("DS");
   const [pdate, setPdate] = useState("");
   const [cands, setCands] = useState<Candidates | null>(null);
+  const [cultivarMode, setCultivarMode] = useState<CultivarMode>("best");
   const [selectedCultivars, setSelectedCultivars] = useState<string[]>([]);
   const [candsError, setCandsError] = useState<string | null>(null);
   const [presets, setPresets] = useState<ExperimentPreset[]>([]);
@@ -194,8 +261,29 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
     })();
   }
 
+  // The cultivar choice is valid for the chosen mode ("best" needs nothing, "random" needs the list loaded).
+  const cultivarsOk =
+    branch !== "rice" ||
+    (((cultivarMode === "best" || cultivarMode === "random") && !!cands && cands.rice_varieties.length > 0) ||
+      (cultivarMode === "custom" && selectedCultivars.length >= 1 && selectedCultivars.length <= MAX_CULTIVARS));
+
+  // The ids to send: undefined = let the service choose; otherwise an explicit list.
+  function cultivarIdsToSend(): string[] | undefined {
+    if (branch !== "rice") return undefined;
+    if (cultivarMode === "custom") return selectedCultivars;
+    if (cultivarMode === "random") return pickRandom(cands?.rice_varieties ?? [], MAX_CULTIVARS).map((v) => v.id);
+    // "best": a small explicit shortlist so the run stays fast. Prefer cultivars the farming-practice presets
+    // were built around (known to be calibrated), then fill from the start of the list.
+    // TODO: replace with your agronomists' recommended shortlist (an array of cultivar ids).
+    const available = new Set((cands?.rice_varieties ?? []).map((v) => v.id));
+    const fromPresets = presets.map((x) => x.cultivar).filter((id) => available.has(id));
+    const fill = (cands?.rice_varieties ?? []).map((v) => v.id);
+    return [...new Set([...fromPresets, ...fill])].slice(0, BEST_COUNT);
+  }
+
   function launch(preCrop?: string) {
-    if (!farm || !pdate || starting || (branch === "rice" && selectedCultivars.length === 0)) return;
+    if (!farm || !pdate || starting || !cultivarsOk) return;
+    const cultivarIds = cultivarIdsToSend();
     setError(null);
     setStarting(true);
     // If this run fails or is cancelled, return to where the farmer is now (the crop choice, or the form).
@@ -210,7 +298,7 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
       planting_date: pdate,
       ...(preCrop ? { pre_crop: preCrop } : {}),
       ...(experimentId ? { experiment_id: experimentId } : {}),
-      ...(branch === "rice" ? { cultivar_ids: selectedCultivars } : {}),
+      ...(cultivarIds ? { cultivar_ids: cultivarIds } : {}),
     }, ctl.signal)
       .then(({ run_id }) => {
         if (ctl.signal.aborted) return;
@@ -325,42 +413,64 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
 
               {branch === "rice" && (
                 <fieldset className="plan-radios">
-                  <legend>Which rice cultivars should be simulated?</legend>
-                  <p className="plan-note">
-                    Choose 1–10 cultivars from the installed RICER048.CUL file.
-                    {cands ? ` ${cands.rice_varieties.length} available.` : ""}
-                  </p>
-                  <div className="plan-cultivar-actions">
-                    <button type="button" className="plan-run secondary"
-                      onClick={() => setSelectedCultivars(cands?.rice_varieties.slice(0, 10).map((v) => v.id) ?? [])}
-                      disabled={!cands || cands.rice_varieties.length === 0}>
-                      Select first 10
-                    </button>
-                    <button type="button" className="plan-run secondary"
-                      onClick={() => setSelectedCultivars([])}
-                      disabled={selectedCultivars.length === 0}>
-                      Clear
-                    </button>
-                    <b>{selectedCultivars.length}/10 selected</b>
-                  </div>
-                  {cands?.rice_varieties.map((v) => {
-                    const checked = selectedCultivars.includes(v.id);
-                    return (
-                      <label key={v.id} className="plan-radio">
-                        <input type="checkbox" checked={checked}
-                          disabled={!checked && selectedCultivars.length >= 10}
-                          onChange={(e) => setSelectedCultivars((current) =>
-                            e.target.checked ? [...current, v.id] : current.filter((id) => id !== v.id)
-                          )} />
-                        <span><b>{v.id}</b><small>{v.name}</small></span>
-                      </label>
-                    );
-                  })}
-                  {cands && selectedCultivars.length > 0 && (
+                  <legend>Which rice cultivars should we compare?</legend>
+                  {CULTIVAR_MODES.map((m) => (
+                    <label key={m.value} className="plan-radio">
+                      <input
+                        type="radio"
+                        name="cultivar-mode"
+                        value={m.value}
+                        checked={cultivarMode === m.value}
+                        onChange={() => setCultivarMode(m.value)}
+                      />
+                      <span>
+                        <b>{m.label}</b>
+                        <small>{m.hint}</small>
+                      </span>
+                    </label>
+                  ))}
+
+                  {cultivarMode === "random" && cands && (
                     <p className="plan-note">
-                      Estimated runs: {selectedCultivars.length * cands.weather_windows * 2}
-                      {" "}({selectedCultivars.length} cultivars × {cands.weather_windows} weather windows × actual/ideal).
+                      Estimated runs: {Math.min(MAX_CULTIVARS, cands.rice_varieties.length) * cands.weather_windows * 2}
+                      {" "}(10 cultivars × {cands.weather_windows} weather windows × actual/ideal). A new random set is drawn each time.
                     </p>
+                  )}
+
+                  {cultivarMode === "custom" && (
+                    <>
+                      <p className="plan-note">
+                        Choose 1–{MAX_CULTIVARS} cultivars.
+                        {cands ? ` ${cands.rice_varieties.length} available.` : " Loading the list…"}
+                      </p>
+                      <div className="plan-cultivar-actions">
+                        <button type="button" className="plan-run secondary"
+                          onClick={() => setSelectedCultivars([])}
+                          disabled={selectedCultivars.length === 0}>
+                          Clear
+                        </button>
+                        <b>{selectedCultivars.length}/{MAX_CULTIVARS} selected</b>
+                      </div>
+                      {cands?.rice_varieties.map((v) => {
+                        const checked = selectedCultivars.includes(v.id);
+                        return (
+                          <label key={v.id} className="plan-radio">
+                            <input type="checkbox" checked={checked}
+                              disabled={!checked && selectedCultivars.length >= MAX_CULTIVARS}
+                              onChange={(e) => setSelectedCultivars((current) =>
+                                e.target.checked ? [...current, v.id] : current.filter((id) => id !== v.id)
+                              )} />
+                            <span><b>{v.id}</b><small>{v.name}</small></span>
+                          </label>
+                        );
+                      })}
+                      {cands && selectedCultivars.length > 0 && (
+                        <p className="plan-note">
+                          Estimated runs: {selectedCultivars.length * cands.weather_windows * 2}
+                          {" "}({selectedCultivars.length} cultivars × {cands.weather_windows} weather windows × actual/ideal).
+                        </p>
+                      )}
+                    </>
                   )}
                 </fieldset>
               )}
@@ -383,7 +493,7 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
               </p>
 
               <button className="plan-run" type="submit"
-            disabled={!farm || !pdate || starting || (branch === "rice" && (selectedCultivars.length === 0 || selectedCultivars.length > 10))}
+            disabled={!farm || !pdate || starting || !cultivarsOk}
             aria-busy={starting}>
                 {starting ? (
                   <>
@@ -434,6 +544,7 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
                 Still working. The service may be waking up or finishing an earlier run, and the first crop-model runs are the slowest. You can keep this open.
               </p>
             )}
+            <FarmTips />
             <p className="plan-note">Real crop-model runs; this can take a few minutes.</p>
             <button type="button" className="plan-run secondary" onClick={cancelRun}>Cancel</button>
           </div>
