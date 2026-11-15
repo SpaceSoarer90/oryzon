@@ -40,6 +40,7 @@ class RecommendRequest(BaseModel):
     planting_date: date                        # the ONE UI date (spec §2)
     pre_crop: str | None = None                # Yield Crops branch, stage 2: the picked crop
     experiment_id: str | None = None           # optional management preset (GET /api/experiments)
+    cultivar_ids: list[str] | None = None       # selected rice cultivar IDs (maximum 10)
 
 
 def _validate_startup() -> None:
@@ -109,7 +110,7 @@ def candidates():
     """Calibrated crops and rice varieties, enumerated from the runner (spec §5).
     Never silently substituted with defaults; empty list = nothing calibrated yet."""
     return {
-        "rice_varieties": RUNNER.calibrated_rice_varieties(),
+        "rice_varieties": RUNNER.rice_cultivar_options(),
         "yield_crops": RUNNER.calibrated_yield_crops(),
         "source": config.RUNNER,
     }
@@ -152,6 +153,18 @@ def start_recommendation(req: RecommendRequest):
     if req.experiment_id is not None and req.experiment_id not in PRESETS:
         raise HTTPException(422, f"unknown experiment_id {req.experiment_id!r}; "
                                  f"available: {sorted(PRESETS)}")
+    if req.branch == "rice":
+        selected = req.cultivar_ids or []
+        if not selected:
+            raise HTTPException(422, "select at least one rice cultivar")
+        if len(selected) > 10:
+            raise HTTPException(422, "select no more than 10 rice cultivars")
+        if len(set(selected)) != len(selected):
+            raise HTTPException(422, "duplicate rice cultivar IDs are not allowed")
+        available = set(RUNNER.calibrated_rice_varieties())
+        invalid = sorted(set(selected) - available)
+        if invalid:
+            raise HTTPException(422, f"unknown rice cultivar IDs: {invalid}")
     if req.branch == "rice" and req.pre_crop is not None:
         raise HTTPException(422, "pre_crop is only valid for the yield_crops branch")
     if req.branch == "yield_crops" and req.pre_crop is not None \
