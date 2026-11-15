@@ -32,6 +32,7 @@ class CropEntry(BaseModel):
     actual_yield: RangeStat
     ideal_yield: IdealStat
     relative_yield: RangeStat
+    maturity_days: RangeStat | None = None  # days from planting to physiological maturity, across actual scenarios
 
 
 class PreCrop(BaseModel):
@@ -74,6 +75,8 @@ class VarietyEntry(BaseModel):
     rice_actual: RangeStat
     rice_ideal: IdealStat
     relative_yield: RangeStat
+    maturity_days: RangeStat | None = None  # days from rice planting to physiological maturity
+    days_from_plan_start: RangeStat | None = None  # includes any preceding crop in a sequence
     soil_delta: SoilDelta
     metadata: Metadata
     failed_runs: list[FailedRun]

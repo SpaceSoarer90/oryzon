@@ -108,6 +108,7 @@ class SeasonResult:
     yield_kg_ha: float | None                    # harvested dry matter at maturity
     maturity_date: date | None
     biomass_at_termination_kg_ha: float | None   # cover crops only (spec §4)
+    planting_date: date | None = None
 
 
 @dataclass(frozen=True)
@@ -180,7 +181,7 @@ class StubRunner:
                 # aboveground biomass at termination (kg DM/ha), reported only (spec §4)
                 biomass = 2200.0 + h % 600 + rain / 50.0
                 results.append(SeasonResult(season.kind, season.crop_or_variety,
-                                            None, end, round(biomass, 1)))
+                                            None, end, round(biomass, 1), season.planting_date))
                 continue
             end = season.planting_date + timedelta(days=110 + h % 12)
             # Weather counts only up to this season's maturity, so a sequence run's
@@ -194,7 +195,7 @@ class StubRunner:
                 base *= 0.9
             results.append(SeasonResult(
                 season.kind, season.crop_or_variety,
-                round(base + rain / 200.0, 1), end, None))
+                round(base + rain / 200.0, 1), end, None, season.planting_date))
         h = _digest("soil", spec.soil.profile_id, spec.seasons[0].planting_date.isoformat(),
                     spec.potential)
         start = SoilState(round(5000 + h % 500, 1), round(450 + h % 50, 1), round(28 + h % 10, 1))

@@ -5123,3 +5123,24 @@ body {
   .plan-tip-body { animation: none; }
   .plan-tip-bar { animation: none; transform: scaleX(1); opacity: 0.35; }
 }
+
+/* DSSAT-derived maturity estimate shown with each crop/variety result. */
+.plan-maturity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 7px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #f1f5e7;
+  color: #34421f;
+  font-size: 12px;
+}
+.plan-maturity strong {
+  font-size: 16px;
+  font-weight: 800;
+}
+.plan-maturity span {
+  color: #68745b;
+  font-size: 11px;
+}
