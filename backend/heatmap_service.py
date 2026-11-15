@@ -4,7 +4,7 @@ Why PNGs: drawing thousands of dots in the browser is what made the map laggy. H
 small image per day, and the smoothing/colouring happens once on the server (and is cached).
 
 This module knows nothing about main.py. main.py hands it the layers it has already loaded
-(see build_heatmaps), so there is only one place where the data is read.
+(see build_heatmap), so there is only one place where the data is read.
 """
 from functools import lru_cache
 
@@ -69,18 +69,11 @@ class HeatmapLayer:
         )
 
 
-def build_heatmaps(layers: dict, datasets: dict) -> dict[str, HeatmapLayer]:
-    """One HeatmapLayer per loaded layer. A layer that can't be drawn is skipped, not fatal."""
-    heatmaps = {}
-    for name, layer in layers.items():
-        cfg = datasets[name]
-        try:
-            heatmaps[name] = HeatmapLayer(
-                name, layer.by_date, layer.locations, layer.meta,
-                color=cfg.get("color", "#2f7fd1"),
-                low_color=cfg.get("low_color"),
-                fade_until=cfg.get("fade", 0.35),
-            )
-        except Exception as e:
-            print(f"WARNING: no heat map for layer '{name}': {e}")
-    return heatmaps
+def build_heatmap(name: str, layer, cfg: dict) -> HeatmapLayer:
+    """The heat map renderer for ONE loaded layer. Raises if the layer can't be drawn (the caller decides what to do)."""
+    return HeatmapLayer(
+        name, layer.by_date, layer.locations, layer.meta,
+        color=cfg.get("color", "#2f7fd1"),
+        low_color=cfg.get("low_color"),
+        fade_until=cfg.get("fade", 0.35),
+    )

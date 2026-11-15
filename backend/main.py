@@ -3,13 +3,18 @@
 Every dataset (precipitation, temperature, soil moisture, ...) is a "layer" built by the same code.
 To add a new one, add ONE entry to DATASETS below. Nothing else on the backend needs to be copied.
 
-GET  /api/layers                  -> layers that loaded, plus the reason for any that failed
+Data is NOT read at startup. A layer is read when it is first requested and dropped when another layer is
+requested (only one is in memory at a time). /api/region re-reads each file on every call and frees it again.
+
+GET  /api/layers                  -> configured layers, the one in memory, and the reason for any that failed
 GET  /api/layers/{name}/meta      -> dates, cell size, colour range, bounds for that layer
 GET  /api/layers/{name}/day       -> every grid point for one day (?date=YYYY-MM-DD)
 GET  /api/heatmap/{name}/bounds   -> where on the map the heat map image goes
 GET  /api/heatmap/{name}/{date}   -> the heat map for one day, as a transparent PNG
 POST /api/region                  -> daily average over a GeoJSON polygon, all layers together
 """
+import gc
+import threading
 from dataclasses import dataclass
 from datetime import date as Date
 from pathlib import Path
@@ -21,7 +26,15 @@ from fastapi import FastAPI, HTTPException, Response
 from shapely import contains_xy
 from shapely.geometry import shape
 
-from heatmap_service import build_heatmaps
+from heatmap_service import build_heatmap
+
+import os, psutil
+
+def mem(label):
+    mb = psutil.Process(os.getpid()).memory_info().rss / 1e6
+    print(f"[MEM] {label}: {mb:.0f} MB", flush=True)
+
+mem("after imports")
 
 DATA_DIR = Path(__file__).parent / "data/"
 YEAR = 2025                    # only this year is served for now
@@ -213,7 +226,9 @@ def load_data(name: str, cfg: dict) -> pd.DataFrame:
     return df[has_data].reset_index(drop=True)
 
 
-# ---- Layers: everything precomputed once at startup so each request is just a lookup -------------------
+# ---- Layers: loaded on demand, ONE at a time -----------------------------------------------------------
+# Nothing is read at startup. The first request for a layer reads its file and builds it; when a request for a
+# DIFFERENT layer arrives, the previous one is thrown away first, so at most one layer is ever held in memory.
 
 def grid_step(values: pd.Series) -> float | None:
     """Spacing between neighbouring grid lines, in degrees (None if there is only one)."""
@@ -226,10 +241,10 @@ def grid_step(values: pd.Series) -> float | None:
 class Layer:
     name: str
     decimals: int
-    df: pd.DataFrame          # one row per grid point per day
     locations: pd.DataFrame   # the distinct grid points
     by_date: dict             # date -> that day's rows, for fast lookups
     meta: dict                # served by /api/layers/{name}/meta
+    # (no full table kept: /api/region re-reads the files itself, so a second copy would only waste memory)
 
 
 def build_layer(name: str, cfg: dict) -> Layer:
@@ -255,35 +270,66 @@ def build_layer(name: str, cfg: dict) -> Layer:
             "south": float(locations["lat"].min()), "north": float(locations["lat"].max()),
         },
     }
-    return Layer(name, cfg["decimals"], df, locations, by_date, meta)
+    return Layer(name, cfg["decimals"], locations, by_date, meta)   # `df` is freed when this function returns
 
 
-# A broken dataset (typo in a file name, wrong variable name) must not take the other layers down with it.
-# It is skipped, reported loudly here, and its reason is exposed at /api/layers.
-LAYERS: dict[str, Layer] = {}
-LOAD_ERRORS: dict[str, str] = {}
-print("FETCHING DATA...")
-for _name, _cfg in DATASETS.items():
-    try:
-        LAYERS[_name] = build_layer(_name, _cfg)
-    except Exception as e:
-        LOAD_ERRORS[_name] = str(e)
-        print(f"WARNING: layer '{_name}' failed to load and is disabled: {e}")
-print("FINISHED FETCHING DATA")
+@dataclass
+class ActiveLayer:
+    """The one layer currently in memory, with its heat map renderer (and that renderer's PNG cache)."""
+    layer: Layer
+    heatmap: object | None
+    heatmap_error: str | None
 
-# Heat map images, built once from the layers above (the data is only read in one place).
-HEATMAPS = build_heatmaps(LAYERS, DATASETS)
 
-app = FastAPI(title="Field Shift API")
+LOAD_ERRORS: dict[str, str] = {}     # layer name -> why its last load failed (cleared when it loads fine)
+_active: ActiveLayer | None = None
+# Only one file read at a time (layer switch OR region average), so two requests can never hold two big
+# tables at once. Fast requests for the layer that is already loaded only wait if a load is in progress.
+_load_lock = threading.Lock()
+
+
+def get_active(name: str) -> ActiveLayer:
+    """Return the requested layer, loading it (and dropping the previously loaded one) if needed."""
+    global _active
+    if name not in DATASETS:
+        raise HTTPException(404, f"Unknown layer '{name}'. Available: {list(DATASETS)}")
+
+    with _load_lock:
+        if _active is not None and _active.layer.name == name:
+            return _active
+
+        # Free the old layer BEFORE reading the new one, so the two are never in memory together.
+        _active = None
+        gc.collect()
+        mem(f"dropped previous layer, loading '{name}'")
+
+        cfg = DATASETS[name]
+        try:
+            layer = build_layer(name, cfg)
+        except Exception as e:
+            LOAD_ERRORS[name] = str(e)
+            print(f"WARNING: layer '{name}' failed to load: {e}")
+            raise HTTPException(503, f"Layer '{name}' failed to load: {e}")
+        LOAD_ERRORS.pop(name, None)
+
+        # A layer that can't be drawn as a heat map still works for /meta and /day.
+        heatmap, heatmap_error = None, None
+        try:
+            heatmap = build_heatmap(name, layer, cfg)
+        except Exception as e:
+            heatmap_error = str(e)
+            print(f"WARNING: no heat map for layer '{name}': {e}")
+
+        _active = ActiveLayer(layer, heatmap, heatmap_error)
+        mem(f"layer '{name}' loaded ({len(layer.by_date)} days)")
+        return _active
 
 
 def get_layer(name: str) -> Layer:
-    layer = LAYERS.get(name)
-    if layer is None:
-        if name in LOAD_ERRORS:
-            raise HTTPException(503, f"Layer '{name}' failed to load: {LOAD_ERRORS[name]}")
-        raise HTTPException(404, f"Unknown layer '{name}'. Available: {list(LAYERS)}")
-    return layer
+    return get_active(name).layer
+
+
+app = FastAPI(title="Field Shift API")
 
 
 # ---- Polygon helpers -----------------------------------------------------------------------------------
@@ -304,9 +350,8 @@ def first_vertex(geom: dict) -> list[float]:
     return [coords[1], coords[0]]
 
 
-def points_for(layer: Layer, poly) -> pd.DataFrame:
-    """Rows of the layer for grid points inside the polygon; if none, the single nearest grid point."""
-    df = layer.df
+def points_for(df: pd.DataFrame, poly) -> pd.DataFrame:
+    """Rows of a layer's table for grid points inside the polygon; if none, the single nearest grid point."""
     # Cheap first cut: only rows inside the polygon's bounding rectangle, so the exact test below has less to do.
     minx, miny, maxx, maxy = poly.bounds
     box = df[(df["lon"] >= minx) & (df["lon"] <= maxx) & (df["lat"] >= miny) & (df["lat"] <= maxy)]
@@ -315,11 +360,12 @@ def points_for(layer: Layer, poly) -> pd.DataFrame:
         return inside
 
     # Grid cells are often bigger than a farm, so a small polygon may hold no points at all.
+    locations = df[["lat", "lon"]].drop_duplicates()
     c = poly.centroid
-    d2 = (layer.locations["lon"] - c.x) ** 2 + (layer.locations["lat"] - c.y) ** 2
+    d2 = (locations["lon"] - c.x) ** 2 + (locations["lat"] - c.y) ** 2
     if d2.min() ** 0.5 > MAX_NEAREST_DEG:
         return df.iloc[0:0]   # too far from any data: report "no data" instead of a misleading value
-    nearest = layer.locations.loc[d2.idxmin()]
+    nearest = locations.loc[d2.idxmin()]
     return df[(df["lat"] == nearest["lat"]) & (df["lon"] == nearest["lon"])]
 
 
@@ -332,8 +378,13 @@ def health():
 
 @app.get("/api/layers")
 def list_layers():
-    """Which layers are usable, and why any are not (handy when a new dataset doesn't show up)."""
-    return {"layers": list(LAYERS), "errors": LOAD_ERRORS}
+    """Configured layers, which one is in memory right now, and why any failed the last time they were read.
+    Nothing is read here, so a broken dataset only shows up in `errors` after it has been requested once."""
+    return {
+        "layers": [n for n in DATASETS if n not in LOAD_ERRORS],
+        "loaded": _active.layer.name if _active else None,
+        "errors": LOAD_ERRORS,
+    }
 
 
 @app.post("/api/region")
@@ -342,12 +393,26 @@ def region(body: dict):
     poly = shape(geom)
     latlong = first_vertex(geom)  # for debugging purposes
 
-    # Daily average over the polygon, separately for each layer (each has its own grid)
+    # Daily average over the polygon, separately for each layer (each has its own grid).
+    # Each file is read fresh, averaged, and released before the next one, so memory never holds more than
+    # one extra table (on top of the layer shown on the map).
     series = {}
-    for name, layer in LAYERS.items():
-        selected = points_for(layer, poly)
-        if not selected.empty:
-            series[name] = selected.groupby("date")[name].mean()   # mean skips NaN
+    with _load_lock:
+        for name, cfg in DATASETS.items():
+            try:
+                df = load_data(name, cfg)
+            except Exception as e:
+                LOAD_ERRORS[name] = str(e)
+                print(f"WARNING: layer '{name}' failed to load for /api/region: {e}")
+                continue
+            LOAD_ERRORS.pop(name, None)
+
+            selected = points_for(df, poly)
+            if not selected.empty:
+                series[name] = selected.groupby("date")[name].mean()   # mean skips NaN
+            del df, selected
+            gc.collect()
+            mem(f"region: finished '{name}'")
     if not series:
         raise HTTPException(422, "No data available for this area.")
 
@@ -394,13 +459,12 @@ def layer_day(
     points = grid.astype(object).where(grid.notna(), None).to_dict("records")   # NaN -> null
     return {"date": date.isoformat(), "points": points}
 
-def get_heatmap(name: str):
-    heat = HEATMAPS.get(name)
-    if heat is None:
-        if name in LOAD_ERRORS:
-            raise HTTPException(503, f"Layer '{name}' failed to load: {LOAD_ERRORS[name]}")
-        raise HTTPException(404, f"No heat map for layer '{name}'. Available: {list(HEATMAPS)}")
-    return heat
+
+def get_heatmap(name: str) -> ActiveLayer:
+    active = get_active(name)
+    if active.heatmap is None:
+        raise HTTPException(404, f"No heat map for layer '{name}': {active.heatmap_error}")
+    return active
 
 
 # IMPORTANT: this route must be declared BEFORE the "{date}" one below. Routes are matched in order, so if
@@ -408,16 +472,16 @@ def get_heatmap(name: str):
 @app.get("/api/heatmap/{name}/bounds")
 def heatmap_bounds(name: str):
     """[[south, west], [north, east]]: the corners to pin the image to (Leaflet ImageOverlay bounds)."""
-    return get_heatmap(name).bounds
+    return get_heatmap(name).heatmap.bounds
 
 
 @app.get("/api/heatmap/{name}/{date}")
 def heatmap_png(name: str, date: Date):
-    heat = get_heatmap(name)
+    active = get_heatmap(name)
     try:
-        png = heat.render(date)
+        png = active.heatmap.render(date)
     except KeyError:
-        dates = LAYERS[name].meta["dates"]
+        dates = active.layer.meta["dates"]
         raise HTTPException(404, f"No data for {date}. Available: {dates[0]} to {dates[-1]}")
 
     return Response(
@@ -427,4 +491,3 @@ def heatmap_png(name: str, date: Date):
         # Kept short so a restart with new data or new colours isn't hidden behind a day-old cached image.
         headers={"Cache-Control": "public, max-age=300"},
     )
-
