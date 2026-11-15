@@ -28,6 +28,7 @@ Scope (be explicit, spec §5 "never silently substitute"):
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -126,7 +127,35 @@ class DssatRunner:
         try:
             return self._run(spec)
         except _RunFailed as exc:
+            self._write_failure_manifest(spec, str(exc))
             return RunResult((), None, None, "failed", str(exc))
+
+    @staticmethod
+    def _write_failure_manifest(spec: ExperimentSpec, error: str) -> None:
+        """Keep enough input/output context to reproduce a failed DSSAT run."""
+        wd = spec.work_dir
+        try:
+            wd.mkdir(parents=True, exist_ok=True)
+            manifest = {
+                "status": "failed", "error": error,
+                "run_type": "ideal" if spec.potential else "actual",
+                "potential": spec.potential,
+                "seasons": [{
+                    "kind": s.kind, "cultivar": s.crop_or_variety,
+                    "planting_date": s.planting_date.isoformat(),
+                    "establishment": s.establishment,
+                } for s in spec.seasons],
+                "soil_profile": spec.soil.profile_id,
+                "weather_start": str(spec.weather.index.min().date()) if len(spec.weather) else None,
+                "weather_end": str(spec.weather.index.max().date()) if len(spec.weather) else None,
+                "weather_rows": int(len(spec.weather)),
+                "artifacts": sorted(p.name for p in wd.iterdir() if p.is_file()),
+                "diagnostics": DssatRunner._diagnostics(wd),
+            }
+            (wd / "run_manifest.json").write_text(json.dumps(manifest, indent=2) + "\\n")
+        except OSError:
+            # Never hide the original simulation failure because diagnostics could not be saved.
+            pass
 
     def _run(self, spec: ExperimentSpec) -> RunResult:
         if len(spec.seasons) != 1 or spec.seasons[0].kind != "rice":
@@ -172,7 +201,30 @@ class DssatRunner:
         except subprocess.TimeoutExpired:
             raise _RunFailed(f"DSSAT timed out after {RUN_TIMEOUT_S}s")
         (wd / "dssat.stdout.log").write_text(proc.stdout + proc.stderr)
+        self._write_run_manifest(wd, spec, proc.returncode)
+        if proc.returncode != 0:
+            raise _RunFailed(f"DSSAT exited with code {proc.returncode}: {self._why(wd, proc)}")
         return self._parse(wd, proc, season, soil_layers)
+
+    @staticmethod
+    def _write_run_manifest(wd: Path, spec: ExperimentSpec, return_code: int) -> None:
+        manifest = {
+            "status": "completed_process", "return_code": return_code,
+            "run_type": "ideal" if spec.potential else "actual",
+            "potential": spec.potential,
+            "seasons": [{
+                "kind": s.kind, "cultivar": s.crop_or_variety,
+                "planting_date": s.planting_date.isoformat(),
+                "establishment": s.establishment,
+            } for s in spec.seasons],
+            "soil_profile": spec.soil.profile_id,
+            "weather_start": str(spec.weather.index.min().date()) if len(spec.weather) else None,
+            "weather_end": str(spec.weather.index.max().date()) if len(spec.weather) else None,
+            "weather_rows": int(len(spec.weather)),
+            "artifacts": sorted(p.name for p in wd.iterdir() if p.is_file()),
+            "diagnostics": DssatRunner._diagnostics(wd),
+        }
+        (wd / "run_manifest.json").write_text(json.dumps(manifest, indent=2) + "\\n")
 
     @staticmethod
     def _season_dict(season, spec: ExperimentSpec) -> dict:
@@ -288,7 +340,13 @@ class DssatRunner:
         if hwam is None or hwam < 0 or mdat in ("-99", "0"):
             raise _RunFailed(f"rice did not reach maturity / no yield reported "
                              f"(HWAM={row.get('HWAM')}, MDAT={mdat}): {self._why(wd, proc)}")
-        maturity = datetime.strptime(mdat, "%Y%j").date()
+        try:
+            maturity = datetime.strptime(mdat, "%Y%j").date()
+        except ValueError as exc:
+            raise _RunFailed(f"invalid DSSAT MDAT {mdat!r} in Summary.OUT: {self._why(wd, proc)}") from exc
+        if maturity < season.planting_date:
+            raise _RunFailed(f"DSSAT MDAT {mdat} resolves to {maturity}, before planting "
+                             f"{season.planting_date}: {self._why(wd, proc)}")
         soil_start, soil_end = self._soil_states(wd, soil_layers)
         return RunResult((SeasonResult("rice", season.crop_or_variety, hwam, maturity, None,
                                        season.planting_date),),
@@ -315,14 +373,29 @@ class DssatRunner:
         return state(org[0], ni[0]), state(org[-1], ni[-1])
 
     @staticmethod
+    def _diagnostics(wd: Path) -> dict[str, str]:
+        """Return complete, separately labelled DSSAT diagnostics (bounded per file)."""
+        out: dict[str, str] = {}
+        for name in ("ERROR.OUT", "WARNING.OUT", "dssat.stdout.log"):
+            path = wd / name
+            if path.exists():
+                # Preserve original files in the run directory; cap only the manifest copy.
+                out[name] = path.read_text(errors="replace")[-12000:]
+        return out
+
+    @staticmethod
     def _why(wd: Path, proc) -> str:
+        parts = []
         for name in ("ERROR.OUT", "WARNING.OUT"):
             f = wd / name
             if f.exists():
-                txt = " ".join(f.read_text(errors="replace").split())
+                txt = f.read_text(errors="replace").strip()
                 if txt:
-                    return txt[:300]
-        return (proc.stdout + proc.stderr).strip()[-300:] or "no diagnostic output"
+                    parts.append(f"{name}: {txt[-6000:]}")
+        console = (proc.stdout + proc.stderr).strip()
+        if console:
+            parts.append(f"stdout/stderr: {console[-6000:]}")
+        return " | ".join(parts) or "no diagnostic output"
 
 
 # -- helpers ----------------------------------------------------------------------------------
