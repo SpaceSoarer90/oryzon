@@ -1,24 +1,68 @@
 """Validate the DSSAT installation baked into the deployment image.
 
-This is a startup check, not an installer: Docker builds DSSAT from source so the
-executable is linked against the same GLIBC family as the Python runtime.
+This is a startup check, not an installer. The executable is inspected directly
+so this check does not depend on external ELF-inspection utilities.
 """
 from __future__ import annotations
 
 import os
 import platform
 import shutil
+import struct
 import subprocess
 from pathlib import Path
 
 
-def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+def _has_elf_interpreter(executable: Path) -> bool:
+    """Return whether an ELF executable has a PT_INTERP program header."""
+    with executable.open("rb") as stream:
+        ident = stream.read(16)
+        if len(ident) != 16 or ident[:4] != b"\\x7fELF":
+            raise RuntimeError(f"DSSAT executable is not an ELF binary: {executable}")
+
+        elf_class, encoding = ident[4], ident[5]
+        if elf_class not in (1, 2) or encoding not in (1, 2):
+            raise RuntimeError(
+                f"Unsupported ELF class/byte order in DSSAT executable: "
+                f"class={elf_class}, encoding={encoding}"
+            )
+
+        endian = "<" if encoding == 1 else ">"
+        if elf_class == 1:
+            header_format = endian + "HHIIIIIHHHHHH"
+            header_size = struct.calcsize(header_format)
+            header = stream.read(header_size)
+            if len(header) != header_size:
+                raise RuntimeError("DSSAT ELF header is truncated")
+            fields = struct.unpack(header_format, header)
+            program_header_offset = fields[4]
+            program_header_size = fields[8]
+            program_header_count = fields[9]
+            type_format = endian + "I"
+        else:
+            header_format = endian + "HHIQQQIHHHHHH"
+            header_size = struct.calcsize(header_format)
+            header = stream.read(header_size)
+            if len(header) != header_size:
+                raise RuntimeError("DSSAT ELF header is truncated")
+            fields = struct.unpack(header_format, header)
+            program_header_offset = fields[4]
+            program_header_size = fields[8]
+            program_header_count = fields[9]
+            type_format = endian + "I"
+
+        if program_header_size < struct.calcsize(type_format):
+            raise RuntimeError("DSSAT ELF program-header entries are invalid")
+
+        for index in range(program_header_count):
+            stream.seek(program_header_offset + index * program_header_size)
+            entry = stream.read(struct.calcsize(type_format))
+            if len(entry) != struct.calcsize(type_format):
+                raise RuntimeError("DSSAT ELF program headers are truncated")
+            if struct.unpack(type_format, entry)[0] == 3:  # PT_INTERP
+                return True
+
+    return False
 
 
 def validate_dssat() -> None:
@@ -38,40 +82,29 @@ def validate_dssat() -> None:
     if not os.access(executable, os.X_OK):
         raise RuntimeError(f"DSSAT executable is not executable: {executable}")
 
-    # Inspect the ELF headers first. ldd reports "not a dynamic executable"
-    # for valid statically linked ELF binaries, so its exit status alone is
-    # not enough to decide whether the DSSAT build is broken.
-    readelf = shutil.which("readelf")
-    if readelf is None:
-        raise RuntimeError("readelf is unavailable; cannot validate DSSAT executable")
-
-    header = _run([readelf, "-h", str(executable)])
-    if header.returncode != 0 or "ELF" not in header.stdout:
-        output = header.stdout + header.stderr
-        raise RuntimeError(f"DSSAT executable is not a valid ELF binary:\n{output}")
-
-    program_headers = _run([readelf, "-l", str(executable)])
-    if program_headers.returncode != 0:
-        output = program_headers.stdout + program_headers.stderr
-        raise RuntimeError(f"could not inspect DSSAT ELF program headers:\n{output}")
-
-    # A PT_INTERP segment means the executable uses a dynamic loader and ldd
-    # can resolve its shared libraries. Without it, treat the ELF as static
-    # (or static-PIE) and do not pass it to ldd.
-    dynamically_linked = "INTERP" in program_headers.stdout
-    if dynamically_linked:
+    if _has_elf_interpreter(executable):
         ldd = shutil.which("ldd")
         if ldd is None:
-            raise RuntimeError("ldd is unavailable; cannot validate DSSAT shared libraries")
+            raise RuntimeError(
+                "ldd is unavailable; cannot validate DSSAT shared-library dependencies"
+            )
 
-        result = _run([ldd, str(executable)])
+        result = subprocess.run(
+            [ldd, str(executable)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
         output = result.stdout + result.stderr
         if "not found" in output.lower():
             raise RuntimeError(
-                "DSSAT has unresolved shared-library dependencies:\n" + output
+                "DSSAT has unresolved shared-library dependencies:\\n" + output
             )
         if result.returncode != 0:
-            raise RuntimeError(f"could not inspect DSSAT shared libraries:\n{output}")
+            raise RuntimeError(
+                f"could not inspect DSSAT shared libraries (exit {result.returncode}):\\n"
+                + output
+            )
     else:
         print(
             "DSSAT executable has no ELF interpreter; "
