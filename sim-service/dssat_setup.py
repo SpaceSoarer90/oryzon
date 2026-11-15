@@ -17,7 +17,7 @@ def _has_elf_interpreter(executable: Path) -> bool:
     """Return whether an ELF executable has a PT_INTERP program header."""
     with executable.open("rb") as stream:
         ident = stream.read(16)
-        if len(ident) != 16 or ident[:4] != b"\\x7fELF":
+        if len(ident) != 16 or ident[:4] != b"\x7fELF":
             raise RuntimeError(f"DSSAT executable is not an ELF binary: {executable}")
 
         elf_class, encoding = ident[4], ident[5]
