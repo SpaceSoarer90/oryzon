@@ -108,8 +108,8 @@ def health():
 
 @app.get("/api/candidates")
 def candidates():
-    """Calibrated crops and rice varieties, enumerated from the runner (spec §5).
-    Never silently substituted with defaults; empty list = nothing calibrated yet."""
+    """Return installed rice cultivars (ID/name from RICER048.CUL) and crop candidates.
+    Rice cultivar presence in the stock CUL file does not itself imply local calibration."""
     return {
         "rice_varieties": RUNNER.rice_cultivar_options(),
         "yield_crops": RUNNER.calibrated_yield_crops(),
