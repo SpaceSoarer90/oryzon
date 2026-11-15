@@ -2107,7 +2107,7 @@ const STATUS_GLYPH: Record<Level, string> = { good: "âœ“", watch: "!", alert: "â
 
 // True on wide windows and landscape phones, where there is room on the map beside the sheet.
 // Keep this number in sync with the 800px media queries in styles.css.
-const WIDE_QUERY = "(min-width: 800px)";
+const WIDE_QUERY = "(min-width: 1000px)";
 function useWide() {
   const [wide, setWide] = useState(() => window.matchMedia(WIDE_QUERY).matches);
   useEffect(() => {

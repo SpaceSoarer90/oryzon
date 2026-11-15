@@ -2378,11 +2378,12 @@ body {
 /* ---------- wide windows and landscape phones: the day picker and reading tiles stay on the map
    while the sheet is full. On phones in portrait (under 800px) the full sheet covers the map, so they
    still hide there. Keep 800px in sync with WIDE_QUERY in map.tsx. ---------- */
- @media (min-width: 800px) {
-  /* the full sheet is a 520px column in the middle: sit in the space to its left, at the same height as when the sheet is half */
+ @media (min-width: 1000px) {
+  /* the full sheet is a 520px column in the middle: sit in the space to its left, at the default (collapsed) height */
+  .app.sheet-half .map-timeline,
   .app.sheet-full .map-timeline {
     display: block;
-    bottom: calc(62% + 14px);
+    --sheet-h: calc(96px + var(--safe-bottom)); /* same value as the default on .app, so bottom stays where it is */
     width: clamp(180px, calc((100% - 520px) / 2 - 24px), 340px);
   }
   /* the opened reading card sized itself from the sheet height, which is nearly the whole screen when full */
