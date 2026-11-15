@@ -4,7 +4,8 @@ Every dataset (precipitation, temperature, soil moisture, ...) is a "layer" buil
 To add a new one, add ONE entry to DATASETS below. Nothing else on the backend needs to be copied.
 
 Data is NOT read at startup. A layer is read when it is first requested and dropped when another layer is
-requested (only one is in memory at a time). /api/region re-reads each file on every call and frees it again.
+requested (only one is in memory at a time). /api/region re-reads each file on every call, but ONLY the area
+around the farm, and frees it again.
 
 GET  /api/layers                  -> configured layers, the one in memory, and the reason for any that failed
 GET  /api/layers/{name}/meta      -> dates, cell size, colour range, bounds for that layer
@@ -49,6 +50,7 @@ FILL_VALUES = (-999, -9999)
 # None = keep everything (only safe for small files).
 BBOX: tuple[float, float, float, float] | None = None
 MAX_NETCDF_CELLS = 30_000_000  # safety stop: refuse to load more than this many values, and say how to fix it
+CSV_CHUNK_ROWS = 200_000       # CSV files are read this many rows at a time
 
 # Column names shared by all the CSV files
 COL_LAT, COL_LON = "LAT", "LON"
@@ -62,8 +64,9 @@ COL_YEAR, COL_DOY = "YEAR", "DOY"  # ...otherwise the date is built from year + 
 #   column   the CSV column, or the NetCDF variable name, holding the values
 #   decimals how many decimals to round values to in the API
 #   isel     (netcdf, optional) pick one slice of an extra dimension, e.g. {"lev": 0} for the top soil layer
-#   period   (netcdf, optional) "day" (default) or "month". A monthly dataset is spread over the days of each
-#            month (every day shows its month's value), so it fits the same daily slider as everything else.
+#   period   (netcdf, optional) "day" (default) or "month". A monthly dataset is kept monthly in memory and
+#            spread over the days of each month only when it is looked up (every day shows its month's value),
+#            so it fits the same daily slider as everything else without 12x the memory.
 #   color    (heat map) colour of the HIGH values;  low_color  colour of the LOW values. Dark = more.
 #   fade     (heat map, optional) 0..1: how much of the low end is see-through. 0 = low values drawn solid,
 #            0.35 (default) = the lowest values fade out so they don't look like white haze over the map.
@@ -79,17 +82,32 @@ DATASETS = {
                       "decimals": 2, "period": "month", "color": "#43c864", "low_color": None},
 }
 
+Box = tuple[float, float, float, float]   # (west, south, east, north)
+
 
 # ---- Readers: each turns raw files into the same tidy table: date, lat, lon, <layer name> ------------------
+# Every reader takes an optional `bbox`. When given, only rows/cells inside that rectangle are kept, and the
+# rest is thrown away while reading, so the full file is never held in memory.
 
-def read_csv(files: list[Path], name: str, cfg: dict) -> pd.DataFrame:
-    """CSV: one row per grid point per day, with YEAR + DOY (or DATE) columns."""
+def read_csv(files: list[Path], name: str, cfg: dict, bbox: Box | None = None) -> pd.DataFrame:
+    """CSV: one row per grid point per day, with YEAR + DOY (or DATE) columns. Read in chunks."""
     column = cfg["column"]
-    raw = pd.concat((pd.read_csv(f) for f in files), ignore_index=True)
+    parts = []
+    for f in files:
+        for chunk in pd.read_csv(f, chunksize=CSV_CHUNK_ROWS):
+            missing = [c for c in (COL_LAT, COL_LON, column) if c not in chunk.columns]
+            if missing:
+                raise RuntimeError(f"Missing columns {missing}. Columns found: {list(chunk.columns)}")
+            if bbox:
+                west, south, east, north = bbox
+                chunk = chunk[chunk[COL_LON].between(west, east) & chunk[COL_LAT].between(south, north)]
+            if not chunk.empty:
+                parts.append(chunk)
 
-    missing = [c for c in (COL_LAT, COL_LON, column) if c not in raw.columns]
-    if missing:
-        raise RuntimeError(f"Missing columns {missing}. Columns found: {list(raw.columns)}")
+    if not parts:
+        raise RuntimeError("No rows inside the requested area.")
+    raw = pd.concat(parts, ignore_index=True)
+    del parts
 
     if COL_DATE in raw.columns:
         dates = pd.to_datetime(raw[COL_DATE])
@@ -155,9 +173,11 @@ def standardize_coords(ds: xr.Dataset, variable: str, filename: str) -> xr.DataA
     return da
 
 
-def read_netcdf(files: list[Path], name: str, cfg: dict) -> pd.DataFrame:
-    """NetCDF (.nc/.nc4): a grid per time step. Cropped, turned into one value per day, then flattened into rows."""
+def read_netcdf(files: list[Path], name: str, cfg: dict, bbox: Box | None = None) -> pd.DataFrame:
+    """NetCDF (.nc/.nc4): a grid per time step. Cropped, turned into one value per day (or per month), then
+    flattened into rows."""
     variable = cfg["column"]
+    box = bbox or BBOX          # a request-specific area wins over the global crop
     pieces = []
     for f in files:
         with xr.open_dataset(f) as ds:
@@ -175,8 +195,8 @@ def read_netcdf(files: list[Path], name: str, cfg: dict) -> pd.DataFrame:
             # Shrink BEFORE loading into memory: only our year, and only our area.
             da = da.sortby("lat").sortby("lon").sortby("time")
             da = da.sel(time=slice(f"{YEAR}-01-01", f"{YEAR}-12-31"))
-            if BBOX:
-                west, south, east, north = BBOX
+            if box:
+                west, south, east, north = box
                 da = da.sel(lat=slice(south, north), lon=slice(west, east))
             if da.size > MAX_NETCDF_CELLS:
                 raise RuntimeError(f"{f.name}: {da.size:,} values is too many to load. Set BBOX to crop to your area.")
@@ -185,14 +205,13 @@ def read_netcdf(files: list[Path], name: str, cfg: dict) -> pd.DataFrame:
     da = xr.concat(pieces, dim="time").sortby("time") if len(pieces) > 1 else pieces[0]
     if da.sizes["time"] == 0:
         raise RuntimeError(f"No time steps in {YEAR}.")
+    if da.sizes["lat"] == 0 or da.sizes["lon"] == 0:
+        raise RuntimeError("No grid cells inside the requested area.")
 
     if cfg.get("period") == "month":
-        # Monthly data: one value per month. Spread it over the days of that month so the daily slider works.
-        # (Only up to the end of the last month present; we never invent values for months the file lacks.)
-        months = da.indexes["time"].to_period("M").to_timestamp()      # snap stamps to the 1st of their month
-        da = da.assign_coords(time=months)
-        days = pd.date_range(months[0], months[-1] + pd.offsets.MonthEnd(0), freq="D")
-        da = da.reindex(time=days, method="ffill")                     # each day takes the latest month start before it
+        # Monthly data: keep ONE value per month (stamped on the 1st). It is NOT expanded to 365 days here:
+        # that would multiply the table by ~30. build_layer and /api/region spread it over the days instead.
+        da = da.assign_coords(time=da.indexes["time"].to_period("M").to_timestamp())
     else:
         # Hourly / 3-hourly / daily data: the app works in days, so average each day.
         da = da.resample(time="1D").mean()
@@ -204,8 +223,9 @@ def read_netcdf(files: list[Path], name: str, cfg: dict) -> pd.DataFrame:
 READERS = {"csv": read_csv, "netcdf": read_netcdf}
 
 
-def load_data(name: str, cfg: dict) -> pd.DataFrame:
-    """Read one dataset with the reader for its format, then apply the clean-up every format shares."""
+def load_data(name: str, cfg: dict, bbox: Box | None = None) -> pd.DataFrame:
+    """Read one dataset with the reader for its format, then apply the clean-up every format shares.
+    `bbox` = only read this area (west, south, east, north); None = the whole dataset."""
     files = sorted(DATA_DIR.glob(cfg["file"]))   # works for a plain file name and for wildcards
     if not files:
         raise RuntimeError(f"No files match {DATA_DIR / cfg['file']}")
@@ -213,7 +233,7 @@ def load_data(name: str, cfg: dict) -> pd.DataFrame:
     if reader is None:
         raise RuntimeError(f"Unknown format '{cfg['format']}'. Use one of {list(READERS)}")
 
-    df = reader(files, name, cfg)
+    df = reader(files, name, cfg, bbox)
 
     df[name] = df[name].where(~df[name].isin(FILL_VALUES))    # "missing" markers -> NaN
     years_found = sorted(df["date"].dt.year.unique().tolist())
@@ -225,6 +245,19 @@ def load_data(name: str, cfg: dict) -> pd.DataFrame:
     # don't show up as permanent "no data" dots and can't be picked as the nearest point.
     has_data = df.groupby(["lat", "lon"])[name].transform("count") > 0
     return df[has_data].reset_index(drop=True)
+
+
+def spread_months(starts: list[pd.Timestamp]) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
+    """For a monthly dataset: every day from the first month start to the end of the last month, paired with the
+    month start whose value that day shows (the latest one on or before it)."""
+    starts = sorted(starts)
+    days = pd.date_range(starts[0], starts[-1] + pd.offsets.MonthEnd(0), freq="D")
+    out, k = [], 0
+    for day in days:
+        while k + 1 < len(starts) and starts[k + 1] <= day:
+            k += 1
+        out.append((day, starts[k]))
+    return out
 
 
 # ---- Layers: loaded on demand, ONE at a time -----------------------------------------------------------
@@ -251,10 +284,20 @@ class Layer:
 def build_layer(name: str, cfg: dict) -> Layer:
     df = load_data(name, cfg)
     locations = df[["lat", "lon"]].drop_duplicates().reset_index(drop=True)
-    by_date = {
-        d: g[["lat", "lon", name]].reset_index(drop=True)
-        for d, g in df.groupby(df["date"].dt.date)
-    }
+
+    if cfg.get("period") == "month":
+        # One frame per month, shared by every day of that month (the SAME object, not a copy).
+        month_frames = {
+            pd.Timestamp(d): g[["lat", "lon", name]].reset_index(drop=True)
+            for d, g in df.groupby("date")
+        }
+        by_date = {day.date(): month_frames[start] for day, start in spread_months(list(month_frames))}
+    else:
+        by_date = {
+            d: g[["lat", "lon", name]].reset_index(drop=True)
+            for d, g in df.groupby(df["date"].dt.date)
+        }
+
     meta = {
         "dates": [d.isoformat() for d in sorted(by_date)],
         "period": cfg.get("period", "day"),   # "month" = each month's value is repeated on all its days
@@ -322,6 +365,7 @@ def get_active(name: str) -> ActiveLayer:
             print(f"WARNING: no heat map for layer '{name}': {e}")
 
         _active = ActiveLayer(layer, heatmap, heatmap_error)
+        gc.collect()
         mem(f"layer '{name}' loaded ({len(layer.by_date)} days)")
         return _active
 
@@ -403,23 +447,32 @@ def region(body: dict):
     poly = shape(geom)
     latlong = first_vertex(geom)  # for debugging purposes
 
+    # Only read the area around the farm (padded so the "nearest grid point" fallback still has candidates).
+    minx, miny, maxx, maxy = poly.bounds
+    pad = MAX_NEAREST_DEG
+    area: Box = (minx - pad, miny - pad, maxx + pad, maxy + pad)
+
     # Daily average over the polygon, separately for each layer (each has its own grid).
-    # Each file is read fresh, averaged, and released before the next one, so memory never holds more than
-    # one extra table (on top of the layer shown on the map).
+    # Each file is read fresh (just that area), averaged, and released before the next one.
     series = {}
     with _load_lock:
         for name, cfg in DATASETS.items():
             try:
-                df = load_data(name, cfg)
+                df = load_data(name, cfg, bbox=area)
             except Exception as e:
-                LOAD_ERRORS[name] = str(e)
-                print(f"WARNING: layer '{name}' failed to load for /api/region: {e}")
+                # Usually "no data in this area" or a bad file; this layer just comes back as null.
+                print(f"WARNING: layer '{name}' unavailable for /api/region: {e}")
                 continue
-            LOAD_ERRORS.pop(name, None)
 
             selected = points_for(df, poly)
             if not selected.empty:
-                series[name] = selected.groupby("date")[name].mean()   # mean skips NaN
+                s = selected.groupby("date")[name].mean()   # mean skips NaN
+                if cfg.get("period") == "month":
+                    # one value per month -> one value per day (same rule as the map layer)
+                    s = pd.Series(
+                        {day: s.get(start, np.nan) for day, start in spread_months(list(s.index))}
+                    )
+                series[name] = s
             del df, selected
             gc.collect()
             mem(f"region: finished '{name}'")

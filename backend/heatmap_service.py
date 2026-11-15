@@ -12,11 +12,18 @@ import numpy as np
 
 from heat_map import GridHeatmap
 
+# Upscaling smooths coarse grids (e.g. 0.5 degree weather data), but a fine grid (e.g. 0.1 degree soil data)
+# is already detailed, and at scale 8 it would need an image and weight arrays that don't fit a small server.
+SMOOTH_SCALE = 8       # used when the grid has fewer cells than FINE_GRID_CELLS
+FINE_GRID_CELLS = 2000
+FINE_SCALE = 2
+IMAGE_CACHE = 32       # rendered PNGs remembered per layer
+
 
 class HeatmapLayer:
     """One layer (precipitation, temperature, ...) ready to render any of its days."""
 
-    def __init__(self, name, by_date, locations, meta, *, color, low_color, fade_until=0.0, scale=8, opacity=0.8):
+    def __init__(self, name, by_date, locations, meta, *, color, low_color, fade_until=0.0, scale=None, opacity=0.8):
         self.name = name
         self.by_date = by_date              # date -> table with columns lat, lon, <name>
         self.color = color                  # colour of the HIGH end
@@ -38,6 +45,9 @@ class HeatmapLayer:
         lats = self.lat0 + step_lat * np.arange(n_lat)
         lons = self.lon0 + step_lon * np.arange(n_lon)
 
+        if scale is None:
+            scale = SMOOTH_SCALE if n_lat * n_lon < FINE_GRID_CELLS else FINE_SCALE
+
         self.renderer = GridHeatmap(lats, lons, scale=scale)   # built once: the expensive part
         self.bounds = self.renderer.bounds                     # [[south, west], [north, east]] for Leaflet
 
@@ -46,8 +56,8 @@ class HeatmapLayer:
         lo, hi = meta["range"]["min"], meta["range"]["p95"]
         self.vmin, self.vmax = (lo, hi) if hi > lo else (lo, meta["range"]["max"])
 
-        # Remember the last 64 images per layer: scrubbing back and forth costs nothing.
-        self.render = lru_cache(maxsize=64)(self._render)
+        # Remember the last few images per layer: scrubbing back and forth costs nothing.
+        self.render = lru_cache(maxsize=IMAGE_CACHE)(self._render)
 
     def _grid_for(self, date) -> np.ndarray:
         frame = self.by_date[date]                                  # KeyError if we don't have that day
