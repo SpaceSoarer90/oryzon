@@ -65,7 +65,7 @@ DEFAULT_MANAGEMENT = {
 
 class DssatRunner:
     def __init__(self, dssat_home: str | Path | None = None, soil_file: str | Path | None = None):
-        self.home = Path(dssat_home or os.environ.get("ORYZON_DSSAT_HOME", "")).expanduser()
+        self.home = Path(dssat_home or os.environ.get("ORYZON_DSSAT_HOME", "")).expanduser().resolve()
         if not self.home or not (self.home / EXE_NAME).exists():
             raise RuntimeError(
                 f"DSSAT executable not found: set ORYZON_DSSAT_HOME to a directory containing "
