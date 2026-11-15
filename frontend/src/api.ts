@@ -1,5 +1,7 @@
 import type { LatLng, DayData, DayGrid, GridMeta, MetricKey, Bounds } from "./types";
 
+const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+
 // Leaflet uses [lat, lng]; GeoJSON uses [lng, lat] and the ring must be closed.
 export function toGeoJSONPolygon(points: LatLng[]): GeoJSON.Polygon {
   const ring = points.map(([lat, lng]) => [lng, lat]);
@@ -21,7 +23,7 @@ export async function fetchRegionData(
   polygon: GeoJSON.Polygon,
   signal?: AbortSignal,
 ): Promise<DayData[]> {
-  const res = await fetch("/api/region", {
+  const res = await fetch(`${API}/api/region`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(polygon),
@@ -36,15 +38,15 @@ export async function fetchRegionData(
 
 // Map layers: `layer` is a name from the backend, e.g. "precipitation" or "temperature"
 export const fetchMeta = (layer: MetricKey, signal?: AbortSignal) =>
-  getJSON<GridMeta>(`/api/layers/${layer}/meta`, signal);
+  getJSON<GridMeta>(`${API}/api/layers/${layer}/meta`, signal);
 
 export const fetchDay = (layer: MetricKey, date: string, signal?: AbortSignal) =>
-  getJSON<DayGrid>(`/api/layers/${layer}/day?date=${encodeURIComponent(date)}`, signal);
+  getJSON<DayGrid>(`${API}/api/layers/${layer}/day?date=${encodeURIComponent(date)}`, signal);
 
-// Heat map: one transparent PNG per layer per day, drawn by the backend. A relative URL on purpose: it goes through
 // the same dev proxy as the other /api calls, so there is no cross-origin (CORS) problem.
 export const heatmapUrl = (layer: MetricKey, date: string) =>
-  `/api/heatmap/${layer}/${encodeURIComponent(date)}`;
+  `${API}/api/heatmap/${layer}/${encodeURIComponent(date)}`;
 
+// Heat map: one transparent PNG per layer per day, drawn by the backend. A relative URL on purpose: it goes through
 export const fetchHeatmapBounds = (layer: MetricKey, signal?: AbortSignal) =>
-  getJSON<Bounds>(`/api/heatmap/${layer}/bounds`, signal);
+  getJSON<Bounds>(`${API}/api/heatmap/${layer}/bounds`, signal);

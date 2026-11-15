@@ -22,14 +22,6 @@ from shapely import contains_xy
 from shapely.geometry import shape
 
 from heatmap_service import build_heatmaps
-from fastapi.middleware.cors import CORSMiddleware
-
-import os
-from fnmatch import fnmatch
-from huggingface_hub import HfApi, hf_hub_download
-
-HF_REPO = os.environ.get("HF_REPO", "JyanMan/NASA_data")
-HF_TOKEN = os.environ.get("HF_TOKEN")
 
 DATA_DIR = Path(__file__).parent / "data/"
 YEAR = 2025                    # only this year is served for now
@@ -72,16 +64,6 @@ DATASETS = {
     "soilMoisture":  {"file": "fldas_monthly/fldas_monthly_ph_2025.nc4", "format": "netcdf", "column": "SoilMoi00_10cm_tavg",
                       "decimals": 2, "period": "month", "color": "#43c864", "low_color": None},
 }
-
-_REPO_FILES = None
-
-def fetch_files(pattern: str) -> list[Path]:
-    """Files in the Hugging Face dataset repo matching `pattern` (wildcards work), downloaded and cached locally."""
-    global _REPO_FILES
-    if _REPO_FILES is None:
-        _REPO_FILES = HfApi(token=HF_TOKEN).list_repo_files(HF_REPO, repo_type="dataset")
-    matches = sorted(f for f in _REPO_FILES if fnmatch(f, pattern))
-    return [Path(hf_hub_download(HF_REPO, f, repo_type="dataset", token=HF_TOKEN)) for f in matches]
 
 
 # ---- Readers: each turns raw files into the same tidy table: date, lat, lon, <layer name> ------------------
@@ -210,12 +192,9 @@ READERS = {"csv": read_csv, "netcdf": read_netcdf}
 
 def load_data(name: str, cfg: dict) -> pd.DataFrame:
     """Read one dataset with the reader for its format, then apply the clean-up every format shares."""
-    files = fetch_files(cfg["file"])
+    files = sorted(DATA_DIR.glob(cfg["file"]))   # works for a plain file name and for wildcards
     if not files:
-        raise RuntimeError(f"No files in Hugging Face repo {HF_REPO} match '{cfg['file']}'")
-    # files = sorted(DATA_DIR.glob(cfg["file"]))   # works for a plain file name and for wildcards
-    # if not files:
-    #     raise RuntimeError(f"No files match {DATA_DIR / cfg['file']}")
+        raise RuntimeError(f"No files match {DATA_DIR / cfg['file']}")
     reader = READERS.get(cfg["format"])
     if reader is None:
         raise RuntimeError(f"Unknown format '{cfg['format']}'. Use one of {list(READERS)}")
@@ -283,25 +262,17 @@ def build_layer(name: str, cfg: dict) -> Layer:
 # It is skipped, reported loudly here, and its reason is exposed at /api/layers.
 LAYERS: dict[str, Layer] = {}
 LOAD_ERRORS: dict[str, str] = {}
-print("FETCHING DATA")
 for _name, _cfg in DATASETS.items():
     try:
         LAYERS[_name] = build_layer(_name, _cfg)
     except Exception as e:
         LOAD_ERRORS[_name] = str(e)
         print(f"WARNING: layer '{_name}' failed to load and is disabled: {e}")
-print("FINISHED FETCHING DATA")
 
 # Heat map images, built once from the layers above (the data is only read in one place).
 HEATMAPS = build_heatmaps(LAYERS, DATASETS)
 
 app = FastAPI(title="Field Shift API")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["https://oryzon-pied.vercel.app", "http://localhost:5173"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
 def get_layer(name: str) -> Layer:
@@ -454,3 +425,4 @@ def heatmap_png(name: str, date: Date):
         # Kept short so a restart with new data or new colours isn't hidden behind a day-old cached image.
         headers={"Cache-Control": "public, max-age=300"},
     )
+
