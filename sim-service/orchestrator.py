@@ -192,10 +192,20 @@ class Orchestrator:
                         fails.append(i_out.failure)
                     continue      # scenario excluded, reported (spec §4)
                 a = a_out.result.seasons[-1].yield_kg_ha
+                if not np.isfinite(ceiling[w]) or ceiling[w] <= 0:
+                    notes.append(f"scenario {w[0]} excluded for {v}: ideal yield ceiling is "
+                                 f"not positive/finite ({ceiling[w]!r} kg DM/ha)")
+                    continue
                 ry = a / ceiling[w]
                 if ry > 1 + RY_TOL:
-                    notes.append(f"RY > 1 for {v} in scenario {w[0]} — setup error: the ideal "
-                                 f"ceiling must dominate every actual yield (spec §4)")
+                    matching_ideal = (i_out.result.seasons[-1].yield_kg_ha
+                                      if i_out and i_out.result and i_out.result.seasons else None)
+                    notes.append(
+                        f"RY > 1 for {v} in scenario {w[0]}: actual={a:.1f}, "
+                        f"this cultivar's ideal={matching_ideal!r}, "
+                        f"shared ideal ceiling={ceiling[w]:.1f} kg DM/ha. "
+                        "Potential-run setup/output needs investigation (spec §4); "
+                        "the value is retained and is not capped.")
                 ys.append(a)
                 rys.append(ry)
                 ideals.append(ceiling[w])
