@@ -22,6 +22,7 @@ from datetime import date, timedelta
 import numpy as np
 
 import config
+from experiment_file import ExperimentPreset, rebase_management
 from runner import ExperimentSpec, ICData, Runner, SeasonSpec, SoilRef, Termination
 from schema import (CropEntry, FailedRun, IdealStat, Metadata, PreCrop, RangeStat,
                     RecommendationResult, SoilDelta, VarietyEntry)
@@ -79,8 +80,10 @@ class _RunOutcome:
 
 
 class Orchestrator:
-    def __init__(self, runner: Runner, weather: WeatherStore, soil: SoilStore):
+    def __init__(self, runner: Runner, weather: WeatherStore, soil: SoilStore,
+                 presets: dict[str, ExperimentPreset] | None = None):
         self.runner = runner
+        self.presets = presets or {}
         self.weather = weather
         self.soil = soil
         self._cache: dict[tuple, _RunOutcome] = {}
@@ -130,8 +133,9 @@ class Orchestrator:
         type, scenario, DSSAT version, soil/IC version)."""
         ic_key = "none" if ic is None else hashlib.md5(
             repr((ic.layers, ic.planting_date)).encode()).hexdigest()[:8]
+        mg_key = hashlib.md5(repr([s.management for s in seasons]).encode()).hexdigest()[:8]
         key = (round(self._lat, 4), round(self._lon, 4), label, run_type, window[0],
-               tuple(s.planting_date for s in seasons),
+               tuple(s.planting_date for s in seasons), mg_key,
                self.runner.dssat_version(), self.runner.soil_version(), ic_key)
         if key in self._cache:
             tick()
@@ -244,6 +248,26 @@ class Orchestrator:
         failed: list[FailedRun] = []
         scenarios = [w[0] for w in windows]
 
+        # Management preset (AUDIT.md §9): applies to every RICE season, actual and ideal, with
+        # its dates shifted onto that season's own planting date. Establishment follows the file.
+        exp_id = req.get("experiment_id")
+        preset = None
+        if exp_id:
+            preset = self.presets.get(exp_id)
+            if preset is None:
+                raise ValueError(f"unknown experiment preset {exp_id!r}")
+            if preset.establishment != est:
+                notes.append(f"Establishment set to "
+                             f"{'transplanted' if preset.establishment == 'T' else 'direct-seeded'} "
+                             f"to match preset {exp_id}.")
+                est = preset.establishment
+            notes.append(f"Management preset {exp_id} ({preset.title}) applied to the rice season; "
+                         f"its dates are shifted onto the planting date. Weather, soil and "
+                         f"initial conditions are still the farm's.")
+
+        def mg(d: date):
+            return rebase_management(preset, d) if preset else None
+
         varieties = self.runner.calibrated_rice_varieties()
         crops = self.runner.calibrated_yield_crops()
 
@@ -262,12 +286,12 @@ class Orchestrator:
                 ic = self._ic(layers, pdate_s)
                 for v in varieties:
                     actual[v, w] = self._run(label=f"rice:{v}",
-                                             seasons=[SeasonSpec("rice", v, pdate_s, est)],
+                                             seasons=[SeasonSpec("rice", v, pdate_s, est, management=mg(pdate_s))],
                                              potential=False, weather=weather, soil_ref=soil_ref,
                                              ic=ic, work_root=work_root, window=w,
                                              run_type="actual", tick=tick)
                     ideal[v, w] = self._run(label=f"rice:{v}",
-                                            seasons=[SeasonSpec("rice", v, pdate_s, est)],
+                                            seasons=[SeasonSpec("rice", v, pdate_s, est, management=mg(pdate_s))],
                                             potential=True, weather=weather, soil_ref=soil_ref,
                                             ic=None, work_root=work_root, window=w,
                                             run_type="ideal", tick=tick)
@@ -375,12 +399,12 @@ class Orchestrator:
                 for v in varieties:
                     seq = self._run(label=f"{pre_crop}->rice:{v}",
                                     seasons=[SeasonSpec("yield_crop", pre_crop, pdate_s, est),
-                                             SeasonSpec("rice", v, pdate2, est)],
+                                             SeasonSpec("rice", v, pdate2, est, management=mg(pdate2))],
                                     potential=False, weather=weather, soil_ref=soil_ref,
                                     ic=ic, work_root=work_root, window=w,
                                     run_type="actual", tick=tick)
                     ideal_rice = self._run(label=f"rice:{v}",
-                                           seasons=[SeasonSpec("rice", v, pdate2, est)],
+                                           seasons=[SeasonSpec("rice", v, pdate2, est, management=mg(pdate2))],
                                            potential=True, weather=weather, soil_ref=soil_ref,
                                            ic=None, work_root=work_root, window=w,
                                            run_type="ideal", tick=tick)
@@ -430,12 +454,12 @@ class Orchestrator:
                                 seasons=[SeasonSpec("cover", "mung bean", pdate_s, est,
                                                     Termination(config.COVER_TERM_DAP,
                                                                 config.COVER_RESIDUE)),
-                                         SeasonSpec("rice", v, pdate2, est)],
+                                         SeasonSpec("rice", v, pdate2, est, management=mg(pdate2))],
                                 potential=False, weather=weather, soil_ref=soil_ref,
                                 ic=ic, work_root=work_root, window=w,
                                 run_type="actual", tick=tick)
                 ideal_rice = self._run(label=f"rice:{v}",
-                                       seasons=[SeasonSpec("rice", v, pdate2, est)],
+                                       seasons=[SeasonSpec("rice", v, pdate2, est, management=mg(pdate2))],
                                        potential=True, weather=weather, soil_ref=soil_ref,
                                        ic=None, work_root=work_root, window=w,
                                        run_type="ideal", tick=tick)

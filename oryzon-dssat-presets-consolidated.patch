@@ -1,0 +1,1069 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ORYZON patch consolidation <noreply@example.com>
+Date: Sun, 15 Nov 2026 12:30:00 +0000
+Subject: [PATCH] Add DSSAT rice runner and experiment management presets
+
+Consolidates the previously prepared DSSAT runner/FileX changes and experiment
+preset API/UI changes into one patch. The DSSAT installation script is omitted.
+
+IMPORTANT SCOPE:
+- The included DssatRunner remains rice-only; it explicitly rejects non-rice
+  seasons. The six uploaded MZ/SB/TM/CB/SC/PT FileX files are not wired into
+  model-specific execution by this patch.
+- This is therefore a consolidated baseline patch, NOT the requested completed
+  six-crop DSSAT implementation. Do not treat non-rice crops as supported or
+  calibrated based on this patch.
+
+---
+diff --git a/sim-service/config.py b/sim-service/config.py
+index a2a61d1..d4d162e 100644
+--- a/sim-service/config.py
++++ b/sim-service/config.py
+@@ -84,5 +84,6 @@ SOIL_OM_MODULE = "Godwin (DSSAT MESOM=G)"   # chosen and documented per spec §8
+ 
+ # --- Runner selection ----------------------------------------------------------------------
+ 
+-# "stub" until the owner's DSSAT runner lands (AUDIT.md §5); build_runner fails on anything else.
++# "stub" (default) or "dssat" (dssat_runner.DssatRunner: real DSSAT-CSM binary).
++#   ORYZON_DSSAT_HOME = directory built by scripts/install_dssat.sh (dscsm048 + Genotype/ + CDE files)
+ RUNNER = os.environ.get("ORYZON_RUNNER", "stub")
+diff --git a/sim-service/dssat_runner.py b/sim-service/dssat_runner.py
+new file mode 100644
+index 0000000..8557083
+--- /dev/null
++++ b/sim-service/dssat_runner.py
+@@ -0,0 +1,369 @@
++"""DssatRunner — the real `Runner` (runner.py protocol) backed by the DSSAT-CSM binary.
++
++One `run_experiment` call = one isolated work dir containing everything DSSAT needs:
++
++    DSSATPRO.L48      path profile pointing at DSSAT_HOME (Genotype, *.CDE, StandardData)
++    ORYZ0001.RIX      FileX written by experiment_file.emit_filex (WATER/NITRO off if ideal)
++    ORYZ<yy>01.WTH    the scenario's continuous daily weather (from spec.weather)
++    PH.SOL            ONLY the one soil profile the run uses (copied out of the country file)
++
++then `dscsm048 A ORYZ0001.RIX` is executed in that directory and the outputs are parsed:
++
++    Summary.OUT   HWAM (harvested product, kg dry matter/ha), MDAT (maturity date)   [spec §4]
++    SoilOrg.OUT   SCTD / SNTD: total soil organic C / N (kg/ha), first and last day
++    SoilNi.OUT    NT1D..: total inorganic N (ppm) by depth, converted to kg N/ha
++
++DSSAT_HOME layout (what `scripts/install_dssat.sh` builds):
++
++    <home>/dscsm048            executable built from github.com/DSSAT/dssat-csm-os
++    <home>/Genotype/           from dssat-csm-os/Data/Genotype (RICER048.CUL/.ECO/.SPE ...)
++    <home>/*.CDE, StandardData, DSSATPRO.L48 ...   from dssat-csm-os/Data
++
++Scope (be explicit, spec §5 "never silently substitute"):
++  * Rice single-season runs (actual + ideal) are fully supported.
++  * `calibrated_yield_crops()` is EMPTY and cover/pre-crop sequences are refused with a
++    clear error: they need a calibrated crop model that is not in the stock DSSAT data
++    (mung bean has none at all, spec §8). Nothing is substituted.
++"""
++from __future__ import annotations
++
++import hashlib
++import os
++import re
++import shutil
++import subprocess
++from datetime import date, datetime, timedelta
++from pathlib import Path
++from types import SimpleNamespace
++
++import pandas as pd
++
++import config
++from experiment_file import emit_filex
++from runner import (ExperimentSpec, RunResult, SeasonResult, SoilState)
++
++EXE_NAME = "dscsm048"
++WSTA = "ORYZ"
++EXP_ID = "ORYZ0001"
++_GENERIC_PREFIX = "99"      # 99xxxx = DSSAT generic / MINIMA / MAXIMA rows: not variety-specific calibrations
++RUN_TIMEOUT_S = int(os.environ.get("ORYZON_DSSAT_TIMEOUT_S", "300"))
++
++
++# Management used when a SeasonSpec carries none. Copied from the project owner's verified
++# presets (sim-service/experiments: ARYZ0000 = irrigated dry-seeded, ARYZ0001 = irrigated
++# transplanted) with dates turned into days-after-planting. ASSUMPTION (AUDIT.md §9): the
++# owner may replace these by passing a Management from a selected preset.
++DEFAULT_MANAGEMENT = {
++    "DS": {"planting": {"ppop": 180, "ppoe": 180, "plrs": 0, "pldp": 2, "page": 0, "penv": 0, "plph": 0},
++           "irrigation": ((0, 150, "IR009"),), "irrigation_auto": True,
++           "fertilizer": ((0, 30, "AP002", 5), (21, 30, "AP001", 0), (42, 30, "AP001", 0))},
++    "T": {"planting": {"ppop": 75, "ppoe": 75, "plrs": 20, "pldp": 3, "page": 21, "penv": 27, "plph": 3},
++          "irrigation": ((0, 50, "IR006"),), "irrigation_auto": True,
++          "fertilizer": ((0, 30, "AP002", 5), (20, 35, "AP001", 0), (41, 35, "AP001", 0))},
++}
++
++
++class DssatRunner:
++    def __init__(self, dssat_home: str | Path | None = None, soil_file: str | Path | None = None):
++        self.home = Path(dssat_home or os.environ.get("ORYZON_DSSAT_HOME", "")).expanduser()
++        if not self.home or not (self.home / EXE_NAME).exists():
++            raise RuntimeError(
++                f"DSSAT executable not found: set ORYZON_DSSAT_HOME to a directory containing "
++                f"{EXE_NAME} (see scripts/install_dssat.sh); got {str(self.home)!r}")
++        self.exe = self.home / EXE_NAME
++        self.cul = self.home / "Genotype" / "RICER048.CUL"
++        if not self.cul.exists():
++            raise RuntimeError(f"rice cultivar file missing: {self.cul}")
++        self._soil_file = Path(soil_file) if soil_file else None
++        self._version: str | None = None
++        self._varieties: list[tuple[str, str]] | None = None
++
++    # -- enumeration (spec §5: enumerate from the simulator, never hardcode) ----------------
++
++    def _cultivars(self) -> list[tuple[str, str]]:
++        if self._varieties is None:
++            out = []
++            for line in self.cul.read_text(errors="replace").splitlines():
++                if not line.strip() or line[0] in "!@*":
++                    continue
++                vid = line[:6].strip()
++                if not vid or vid.startswith(_GENERIC_PREFIX):
++                    continue
++                out.append((vid, line[7:23].strip()))
++            self._varieties = out
++        return self._varieties
++
++    def calibrated_rice_varieties(self) -> list[str]:
++        return [vid for vid, _ in self._cultivars()]
++
++    def calibrated_yield_crops(self) -> list[str]:
++        return []      # none calibrated yet (see module docstring); branch returns empty state
++
++    # -- metadata (spec rule 6, cache key) ----------------------------------------------------
++
++    def dssat_version(self) -> str:
++        if self._version is None:
++            vf = self.home / "DSSAT_VERSION"          # written by scripts/install_dssat.sh
++            self._version = vf.read_text().strip() if vf.exists() else "unknown"
++        return self._version
++
++    def cultivar_coefficient_source(self) -> str:
++        digest = hashlib.md5(self.cul.read_bytes()).hexdigest()[:8]
++        return (f"DSSAT stock RICER048.CUL (DSSAT/dssat-csm-os Data/Genotype, md5 {digest}); "
++                f"{len(self._cultivars())} cultivars, NOT re-calibrated by ORYZON")
++
++    def soil_version(self) -> str:
++        f = self._soil_file or config.SOIL_FILE
++        return f"{Path(f).name}:{hashlib.md5(Path(f).read_bytes()).hexdigest()[:8]}"
++
++    # -- one run -------------------------------------------------------------------------------
++
++    def run_experiment(self, spec: ExperimentSpec) -> RunResult:
++        try:
++            return self._run(spec)
++        except _RunFailed as exc:
++            return RunResult((), None, None, "failed", str(exc))
++
++    def _run(self, spec: ExperimentSpec) -> RunResult:
++        if len(spec.seasons) != 1 or spec.seasons[0].kind != "rice":
++            raise _RunFailed(
++                "only single-season rice runs are supported: no calibrated pre-/cover-crop "
++                "model is installed (seasons=" + ",".join(f"{s.kind}:{s.crop_or_variety}"
++                                                          for s in spec.seasons) + ")")
++        season = spec.seasons[0]
++        cultivars = dict(self._cultivars())
++        if season.crop_or_variety not in cultivars:
++            raise _RunFailed(f"rice variety {season.crop_or_variety!r} is not in RICER048.CUL")
++
++        wd = spec.work_dir
++        wd.mkdir(parents=True, exist_ok=True)
++        pdate = season.planting_date
++        w = spec.weather
++        if w.index.min().date() > pdate or w.index.max().date() < pdate + timedelta(days=60):
++            raise _RunFailed(f"weather record {w.index.min().date()}..{w.index.max().date()} "
++                             f"does not cover planting date {pdate}")
++
++        self._write_profile(wd)
++        block = self._read_profile(Path(spec.soil.file), spec.soil.profile_id)
++        lat, lon, soil_layers = self._profile_facts(block)
++        (wd / f"{spec.soil.profile_id[:2]}.SOL").write_text(
++            "*SOILS: ORYZON single-profile extract\n\n" + "\n".join(block) + "\n")
++        soil_id = spec.soil.profile_id
++        self._write_weather(wd, w, pdate, lat, lon)
++
++        s = self._season_dict(season, spec)
++        mgmt = season.management
++        controls: dict = {}
++        auto = None
++        if mgmt is not None:
++            controls = {"OPTIONS": {k: mgmt.controls[k] for k in ("MESOM", "MESOL") if k in mgmt.controls}}
++            auto = mgmt.auto or None
++        emit_filex(wd / f"{EXP_ID}.RIX", experiment_id=EXP_ID, title="ORYZON run",
++                   seasons=[s], controls=controls, potential=spec.potential,
++                   soil_id=soil_id, wsta=WSTA, auto=(auto or {}) if s["irrigation_auto"] and not spec.potential else None)
++
++        try:
++            proc = subprocess.run([str(self.exe), "A", f"{EXP_ID}.RIX"], cwd=wd, capture_output=True,
++                                  text=True, timeout=RUN_TIMEOUT_S)
++        except subprocess.TimeoutExpired:
++            raise _RunFailed(f"DSSAT timed out after {RUN_TIMEOUT_S}s")
++        (wd / "dssat.stdout.log").write_text(proc.stdout + proc.stderr)
++        return self._parse(wd, proc, season, soil_layers)
++
++    @staticmethod
++    def _season_dict(season, spec: ExperimentSpec) -> dict:
++        """emit_filex season dict. Management comes from `season.management` (a selected
++        preset, dates already rebased) or, when None, from DEFAULT_MANAGEMENT below."""
++        pdate = season.planting_date
++        s = {
++            "cultivar": season.crop_or_variety, "planting": pdate,
++            "establishment": season.establishment,
++            "ic": None if spec.initial_conditions is None else SimpleNamespace(
++                root_kg_ha=config.IC_ROOT_KG_HA, pcr=config.IC_PCR,
++                layers=spec.initial_conditions.layers),
++        }
++        mgmt = season.management
++        if mgmt is None:
++            d = DEFAULT_MANAGEMENT[season.establishment]
++            s.update(d["planting"])
++            s["irrigation"] = tuple({"date": pdate + timedelta(days=dap), "amount_mm": mm, "method": code}
++                                    for dap, mm, code in d["irrigation"])
++            s["fertilizer"] = tuple({"date": pdate + timedelta(days=dap), "kg_n_ha": kg,
++                                     "placement": plc, "depth_cm": dep}
++                                    for dap, kg, plc, dep in d["fertilizer"])
++            s["irrigation_auto"] = d["irrigation_auto"]
++            return s
++        p = {k.lower(): v for k, v in mgmt.planting.items()}
++        for k in ("ppop", "ppoe", "pldp", "plrs", "page", "penv", "plph"):
++            if p.get(k) not in (None, "-99"):
++                s[k] = _num(p[k])
++        s["irrigation"] = tuple({"date": e.date, "amount_mm": e.amount_mm, "method": e.method}
++                                for e in mgmt.irrigation)
++        s["fertilizer"] = tuple({"date": e.date, "kg_n_ha": e.kg_n_ha, "placement": e.placement,
++                                 "depth_cm": e.depth_cm} for e in mgmt.fertilizer)
++        s["irrigation_auto"] = mgmt.irrigation_auto
++        return s
++
++    # -- inputs ----------------------------------------------------------------------------------
++
++    def _write_profile(self, wd: Path) -> None:
++        src = (self.home / "DSSATPRO.L48").read_text()
++        (wd / "DSSATPRO.L48").write_text(
++            src.replace("/usr/local", str(self.home)) if "/usr/local" in src else src)
++
++    @staticmethod
++    def _write_weather(wd: Path, w: pd.DataFrame, pdate: date, lat: float, lon: float) -> None:
++        """DSSAT .WTH for one continuous scenario record. The file is named for the YEAR OF
++        THE START DATE (DSSAT's WSTA + YY + '01' rule) and may span several years."""
++        missing = {"SRAD", "TMAX", "TMIN", "RAIN", "DEWP"} - set(w.columns)
++        if missing or w[["SRAD", "TMAX", "TMIN", "RAIN"]].isna().any().any():
++            raise _RunFailed(f"weather record is incomplete (missing {sorted(missing) or 'values'})")
++        tmean = (w["TMAX"] + w["TMIN"]) / 2
++        tav = tmean.mean()
++        monthly = tmean.groupby(w.index.month).mean()
++        amp = (monthly.max() - monthly.min()) / 2
++        lines = [f"*WEATHER DATA : ORYZON scenario {w.index.min().date()}..{w.index.max().date()}",
++                 "@ INSI      LAT     LONG  ELEV   TAV   AMP REFHT WNDHT",
++                 f"  {WSTA}   {lat:7.3f} {lon:8.3f}   -99 {tav:5.1f} {amp:5.1f}  2.00  2.00",
++                 "@DATE  SRAD  TMAX  TMIN  RAIN  DEWP"]
++        for d, r in w.iterrows():
++            lines.append(f"{d.year % 100:02d}{d.timetuple().tm_yday:03d} {r.SRAD:5.1f} {r.TMAX:5.1f} "
++                         f"{r.TMIN:5.1f} {max(r.RAIN, 0):5.1f} {r.DEWP:5.1f}")
++        (wd / f"{WSTA}{pdate.year % 100:02d}01.WTH").write_text("\n".join(lines) + "\n")
++
++    @staticmethod
++    def _read_profile(country_file: Path, profile_id: str) -> list[str]:
++        """Lines of ONE profile out of the (11 MB) country .SOL file."""
++        block: list[str] = []
++        grab = False
++        with open(country_file, errors="replace") as fh:
++            for raw in fh:
++                line = raw.rstrip("\r\n")
++                if line.startswith("*") and not line.startswith("*SOILS"):
++                    if grab:
++                        break
++                    grab = line[1:].split()[0] == profile_id
++                if grab:
++                    block.append(line)
++        if not block:
++            raise _RunFailed(f"soil profile {profile_id} not found in {country_file.name}")
++        return block
++
++    @staticmethod
++    def _profile_facts(block: list[str]) -> tuple[float, float, list[dict]]:
++        """(lat, lon, [{slb, bd}]) from a profile block: the @SITE row and the layer table."""
++        lat = lon = None
++        layers, hdr, site = [], None, False
++        for line in block[1:]:
++            if line.startswith("@"):
++                toks = line[1:].split()
++                site = bool(toks) and toks[0] == "SITE"
++                hdr = toks if "SLB" in toks else None
++            elif site and line.strip():
++                t = line.split()
++                lat, lon, site = float(t[2]), float(t[3]), False
++            elif hdr and line.strip():
++                v = line.split()
++                if len(v) == len(hdr):
++                    layers.append({"slb": float(v[hdr.index("SLB")]), "bd": float(v[hdr.index("SBDM")])})
++        if lat is None or not layers:
++            raise _RunFailed(f"soil profile {block[0][1:].split()[0]} lacks site coordinates or layers")
++        return lat, lon, layers
++
++    # -- outputs ---------------------------------------------------------------------------------
++
++    def _parse(self, wd: Path, proc, season, soil_layers) -> RunResult:
++        summary = wd / "Summary.OUT"
++        if not summary.exists():
++            raise _RunFailed(f"DSSAT produced no Summary.OUT (exit {proc.returncode}): {self._why(wd, proc)}")
++        row = _table(summary)
++        if not row:
++            raise _RunFailed(f"DSSAT Summary.OUT has no data row: {self._why(wd, proc)}")
++        hwam = _f(row.get("HWAM"))
++        mdat = row.get("MDAT", "-99")
++        if hwam is None or hwam < 0 or mdat in ("-99", "0"):
++            raise _RunFailed(f"rice did not reach maturity / no yield reported "
++                             f"(HWAM={row.get('HWAM')}, MDAT={mdat}): {self._why(wd, proc)}")
++        maturity = datetime.strptime(mdat, "%Y%j").date()
++        soil_start, soil_end = self._soil_states(wd, soil_layers)
++        return RunResult((SeasonResult("rice", season.crop_or_variety, hwam, maturity, None),),
++                         soil_start, soil_end, "ok", None)
++
++    def _soil_states(self, wd: Path, layers: list[dict]) -> tuple[SoilState | None, SoilState | None]:
++        org = _daily(wd / "SoilOrg.OUT", ("SCTD", "SNTD"))
++        ni = _daily(wd / "SoilNi.OUT", ("NT1D", "NT2D", "NT3D"))
++        if not org or not ni:
++            return None, None
++
++        def state(o, n) -> SoilState:
++            # mineral N 0..SOIL_DEPTH_CM: ppm * bulk density (g/cm3) * thickness (cm) * 0.1 = kg/ha
++            # DSSAT reports NT1D..NT3D for 0-5, 5-15, 15-20 cm.
++            bounds, ppm, total, top = (5.0, 15.0, 20.0), (n["NT1D"], n["NT2D"], n["NT3D"]), 0.0, 0.0
++            for hi, c in zip(bounds, ppm):
++                hi_c = min(hi, config.SOIL_DEPTH_CM)
++                if hi_c <= top:
++                    continue
++                bd = next((L["bd"] for L in layers if L["slb"] >= hi), layers[-1]["bd"])
++                total += c * bd * (hi_c - top) * 0.1
++                top = hi_c
++            return SoilState(soc_kg_ha=o["SCTD"], son_kg_ha=o["SNTD"], mineral_n_kg_ha=round(total, 2))
++        return state(org[0], ni[0]), state(org[-1], ni[-1])
++
++    @staticmethod
++    def _why(wd: Path, proc) -> str:
++        for name in ("ERROR.OUT", "WARNING.OUT"):
++            f = wd / name
++            if f.exists():
++                txt = " ".join(f.read_text(errors="replace").split())
++                if txt:
++                    return txt[:300]
++        return (proc.stdout + proc.stderr).strip()[-300:] or "no diagnostic output"
++
++
++# -- helpers ----------------------------------------------------------------------------------
++
++
++class _RunFailed(Exception):
++    pass
++
++
++def _num(v):
++    try:
++        f = float(v)
++        return int(f) if f == int(f) else f
++    except ValueError:
++        return v
++
++
++def _f(v) -> float | None:
++    try:
++        return float(v)
++    except (TypeError, ValueError):
++        return None
++
++
++def _table(path: Path) -> dict[str, str]:
++    """First data row of a DSSAT Summary.OUT as {COLUMN: value} (column names from the '@' row)."""
++    header = None
++    for raw in path.read_text(errors="replace").splitlines():
++        if raw.startswith("@"):
++            header = raw[1:].split()
++        elif header and raw.strip() and not raw.startswith(("!", "*")):
++            vals = raw.split()
++            return dict(zip(header, vals)) if len(vals) >= len(header) - 4 else {}
++    return {}
++
++
++def _daily(path: Path, cols: tuple[str, ...]) -> list[dict[str, float]]:
++    """All daily rows of a *.OUT file as dicts of the requested columns."""
++    if not path.exists():
++        return []
++    header, out = None, []
++    for raw in path.read_text(errors="replace").splitlines():
++        if raw.startswith("@"):
++            header = raw[1:].split()
++        elif header and raw.strip() and raw[0] == " ":
++            vals = raw.split()
++            if len(vals) == len(header):
++                out.append({c: float(vals[header.index(c)]) for c in cols if c in header})
++    return [r for r in out if len(r) == len(cols)]
+diff --git a/sim-service/experiment_file.py b/sim-service/experiment_file.py
+index 0e025f0..ac536c9 100644
+--- a/sim-service/experiment_file.py
++++ b/sim-service/experiment_file.py
+@@ -79,24 +79,25 @@ def parse_filex(path: Path) -> ExperimentPreset:
+             title = " ".join(parts[2:]) if len(parts) > 2 else title   # drop ID + "RI"
+             continue
+         if line.startswith("*"):
+-            if current and header is not None:
++            if current and header is not None and rows:
+                 sections.setdefault(current, []).append((header, rows))
+             current, header, rows = line[1:].split()[0].rstrip("()"), None, []
+             continue
+         if line.startswith("@"):
+-            if current and header is not None:
++            if current and header is not None and rows:
+                 sections.setdefault(current, []).append((header, rows))
+-                header, rows = None, []
+             header = [t for t in line[1:].split() if t.isupper() or t in ("PCR", "ICBL")]
+             rows = []
+             continue
+         if current is None or header is None:
+             continue
+         if not line.strip():
++            if current and header is not None and rows:
++                sections.setdefault(current, []).append((header, rows))
+             header, rows = None, []
+             continue
+         rows.append(line.split())
+-    if current and header is not None:
++    if current and header is not None and rows:
+         sections.setdefault(current, []).append((header, rows))
+ 
+     def first_row(section: str, cols: list[str]) -> dict:
+@@ -125,12 +126,13 @@ def parse_filex(path: Path) -> ExperimentPreset:
+     cultivars = first_row("CULTIVARS", ["C", "CR", "INGENO", "CNAME"])
+     fields = first_row("FIELDS", ["ID_FIELD", "ID_SOIL"])
+     planting = first_row("PLANTING", ["PDATE", "PLME"])
++    sim = {hdr[1]: {c: rows[0][i] for i, c in enumerate(hdr) if i >= 2 and i < len(rows[0]) and _col(c)}
++           for hdr, rows in sections.get("SIMULATION", []) if len(hdr) > 2 and rows}
+     controls: dict = {}
+     for sub in ("GENERAL", "OPTIONS", "METHODS", "MANAGEMENT", "OUTPUTS"):
+-        row = first_row(sub, [])
+-        if row:
+-            controls.update(row)
+-    ic_header_rows = sections.get("INITIAL CONDITIONS", [])
++        controls.update(sim.get(sub, {}))
++    auto = {k: sim[k] for k in ("PLANTING", "IRRIGATION", "NITROGEN", "RESIDUES", "HARVEST") if k in sim}
++    ic_header_rows = sections.get("INITIAL", [])
+     ic_rows: list[dict] = []
+     if ic_header_rows:
+         hdr, rows = ic_header_rows[-1]
+@@ -148,13 +150,13 @@ def parse_filex(path: Path) -> ExperimentPreset:
+         fertilizer=tuple(table("FERTILIZERS", ("FDATE", "FAMN"))),
+         initial_conditions=tuple(ic_rows),
+         controls=controls,
+-        auto=_auto_tables(sections),
++        auto=auto,
+     )
+ 
+ 
+ def _col(name: str) -> bool:
+     """Keep real column tokens; drop decoration like dots and dashes."""
+-    return bool(re.fullmatch(r"[A-Z][A-Z0-9]*", name))
++    return bool(re.fullmatch(r"[A-Z][A-Z0-9_]*", name))
+ 
+ 
+ def _auto_tables(sections: dict) -> dict:
+@@ -209,7 +211,10 @@ def emit_filex(dest: Path, *, experiment_id: str, title: str, seasons: list[dict
+     for i, s in enumerate(seasons, 1):
+         tname = f"Season {i}" if len(seasons) > 1 else (s.get("tname") or title or "ORYZON")
+         # CU FL SA IC MP MI MF MR MC MT ME MH SM — management factors on record (R)
+-        lines.append(f" {i} 1 1 0 {tname:<23} 1  1  0  {i}  1  1  1  0  0  0  0  0  1")
++        ic_lv = 1 if (i == 1 and s.get("ic") is not None) else 0
++        mi_lv = i if s.get("irrigation") else 0
++        mf_lv = i if s.get("fertilizer") else 0
++        lines.append(f" {i} 1 1 0 {tname:<23} {i:>2} {1:>2} {0:>2} {ic_lv:>2} {i:>2} {mi_lv:>2} {mf_lv:>2}  0  0  0  0  0  1")
+     lines += [
+         "",
+         "*CULTIVARS",
+@@ -221,26 +226,26 @@ def emit_filex(dest: Path, *, experiment_id: str, title: str, seasons: list[dict
+         "",
+         "*FIELDS",
+         "@L ID_FIELD WSTA....  FLSA  FLOB  FLDT  FLDD  FLDS  FLST SLTX  SLDP  ID_SOIL    FLNAME",
+-        f" 1 ORYZON   {wsta}       -99   -99 DR000   -99   -99     0 -99   -99  {soil_id} -99",
++        f" 1 ORYZON00 {wsta:<4}       -99   -99 DR000   -99   -99     0 {'-99':<4}{'-99':>6}  {soil_id} -99",
+         "@L ...........XCRD ...........YCRD .....ELEV .............AREA .SLEN .FLWR .SLAS FLHST FHDUR",
+         " 1             -99             -99       -99               -99   -99   -99   -99   -99   -99",
+         "",
+     ]
+ 
+-    # INITIAL CONDITIONS — first season only (spec D1: IC feeds the first season)
++    # INITIAL CONDITIONS — first season only (spec D1: IC feeds the first season).
++    # Ideal runs carry no IC (standalone, spec §5): the section is omitted and the
++    # treatment's IC level is 0.
+     ic = p1.get("ic")
+-    lines += ["*INITIAL CONDITIONS",
+-              "@C   PCR ICDAT  ICRT  ICND  ICRN  ICRE  ICWD ICRES ICREN ICREP ICRIP ICRID ICNAME"]
+     pdate = p1["planting"]
+-    if ic is None:
+-        lines.append(f" 1    R {_date_to_yyddd(pdate)}   -99   -99     1     1   -99   -99   -99   -99   -99   -99 -99")
+-        lines += ["@C  ICBL  SH2O  SNH4  SNO3"]
+-    else:
+-        lines.append(f" 1    R {_date_to_yyddd(pdate)}  {ic.root_kg_ha:>5.0f}   -99     1     1   -99   -99   -99   -99   -99   -99 -99")
+-        lines += ["@C  ICBL  SH2O  SNH4  SNO3"]
++    if ic is not None:
++        pcr = getattr(ic, "pcr", "RI")
++        lines += ["*INITIAL CONDITIONS",
++                  "@C   PCR ICDAT  ICRT  ICND  ICRN  ICRE  ICWD ICRES ICREN ICREP ICRIP ICRID ICNAME",
++                  f" 1 {pcr:>5} {_date_to_yyddd(pdate)}  {ic.root_kg_ha:>5.0f}   -99     1     1   -99   -99   -99   -99   -99   -99 -99",
++                  "@C  ICBL  SH2O  SNH4  SNO3"]
+         for layer in ic.layers:
+             lines.append(f" 1 {layer['slb']:>5.0f} {layer['sh2o']:.3f} {layer['snh4']:>5.1f} {layer['sno3']:>5.1f}")
+-    lines.append("")
++        lines.append("")
+ 
+     # one PLANTING/IRRIGATION/FERTILIZER block per season, as separate treatments
+     for i, s in enumerate(seasons, 1):
+@@ -249,9 +254,14 @@ def emit_filex(dest: Path, *, experiment_id: str, title: str, seasons: list[dict
+         plme = "T" if est == "T" else "S"
+         ppop = s.get("ppop", -99)
+         ppoe = s.get("ppoe", -99)
++        def f6(v) -> str:
++            return f"{v:>6}"
+         lines += ["*PLANTING DETAILS" if i == 1 else "",
+                   "@P PDATE EDATE  PPOP  PPOE  PLME  PLDS  PLRS  PLRD  PLDP  PLWT  PAGE  PENV  PLPH  SPRL                        PLNAME",
+-                  f" {i} {_date_to_yyddd(pd)}   -99  {ppop:>5} {ppoe:>5}  {plme:>5}     U     0     0  {s.get('pldp', 2):>5}   -99     0     0     0   -99                        -99"]
++                  f" {i}" + f6(_date_to_yyddd(pd)) + f6(-99) + f6(ppop) + f6(ppoe) + f6(plme) + f6("U")
++                  + f6(s.get("plrs", 0)) + f6(0) + f6(s.get("pldp", 2)) + f6(-99) + f6(s.get("page", 0))
++                  + f6(s.get("penv", 0)) + f6(s.get("plph", 0))
++                  + f6(-99) + " " * 24 + "-99"]
+         irr = s.get("irrigation") or ()
+         if irr:
+             lines += ["*IRRIGATION AND WATER MANAGEMENT",
+@@ -259,7 +269,7 @@ def emit_filex(dest: Path, *, experiment_id: str, title: str, seasons: list[dict
+                       " 1     1    30    50   100 GS000 IR001    10 -99",
+                       "@I IDATE  IROP IRVAL"]
+             for e in irr:
+-                lines.append(f" {i} {_date_to_yyddd(e['date'])} IR009 {e['amount_mm']:>5.0f}")
++                lines.append(f" {i} {_date_to_yyddd(e['date'])} {e.get('method', 'IR009'):>5} {e['amount_mm']:>5.0f}")
+         fert = s.get("fertilizer") or ()
+         if fert:
+             lines += ["*FERTILIZERS (INORGANIC)",
+@@ -276,15 +286,37 @@ def emit_filex(dest: Path, *, experiment_id: str, title: str, seasons: list[dict
+               "@N OPTIONS     WATER NITRO SYMBI PHOSP POTAS DISES  CHEM  TILL   CO2",
+               f" 1 OP              {'N' if potential else 'Y'}     {'N' if potential else 'Y'}     N     N     N     N     N     N     M",
+               "@N METHODS     WTHER INCON LIGHT EVAPO INFIL PHOTO HYDRO NSWIT MESOM MESEV MESOL",
+-              f" 1 ME              M     M     E     R     S     L     R     1     {options.get('MESOM', 'G'):>5}     R     {options.get('MESOL', 2):>2}",
++              f" 1 ME              M     M     E     R     S     L     R     1{options.get('MESOM', 'G'):>6}{'R':>6}{options.get('MESOL', 2):>6}",
+               "@N MANAGEMENT  PLANT IRRIG FERTI RESID HARVS",
+               f" 1 MA              R     {'A' if not potential and p1.get('irrigation_auto', False) else 'R'}     R     R     M",
+               "@N OUTPUTS     FNAME OVVEW SUMRY FROPT GROUT CAOUT WAOUT NIOUT MIOUT DIOUT VBOSE CHOUT OPOUT FMOPT",
+               " 1 OU              N     Y     Y     1     Y     Y     Y     Y     Y     N     Y     N     Y     A"]
+-    if auto:
+-        am = auto.get("IRRIGATION", {})
+-        lines += ["",
+-                  "@  AUTOMATIC MANAGEMENT",
+-                  "@N IRRIGATION  IMDEP ITHRL ITHRU IROFF IMETH IRAMT IREFF",
+-                  f" 1 IR            {am.get('IMDEP', 30):>3} {am.get('ITHRL', 50):>5} {am.get('ITHRU', 100):>5} {am.get('IROFF', 'GS000'):>5} {am.get('IMETH', 'IR001'):>5} {am.get('IRAMT', 10):>5}     1"]
++    if auto is not None:
++        # DSSAT reads the five AUTOMATIC MANAGEMENT tables in order; all must be present.
++        # Values come from the selected preset's tables, else the verified ARYZ0000 defaults.
++        # Date-valued fields are the planting date of the run (the preset's are rebased).
++        d = _date_to_yyddd(pdate)
++
++        def tbl(title: str, code: str, cols: list[str], vals: list) -> list[str]:
++            hdr = f"@N {title:<12}" + f"{cols[0]:>5}" + "".join(f"{c:>6}" for c in cols[1:])
++            row = f" 1 {code:<12}" + f"{vals[0]:>5}" + "".join(f"{v:>6}" for v in vals[1:])
++            return [hdr, row]
++
++        def g(sect: str, col: str, default):
++            return auto.get(sect, {}).get(col, default)
++        lines += ["", "@  AUTOMATIC MANAGEMENT"]
++        lines += tbl("PLANTING", "PL", ["PFRST", "PLAST", "PH2OL", "PH2OU", "PH2OD", "PSTMX", "PSTMN"],
++                     [d, d, g("PLANTING", "PH2OL", 40), g("PLANTING", "PH2OU", 100),
++                      g("PLANTING", "PH2OD", 30), g("PLANTING", "PSTMX", 40), g("PLANTING", "PSTMN", 10)])
++        lines += tbl("IRRIGATION", "IR", ["IMDEP", "ITHRL", "ITHRU", "IROFF", "IMETH", "IRAMT", "IREFF"],
++                     [g("IRRIGATION", "IMDEP", 30), g("IRRIGATION", "ITHRL", 50), g("IRRIGATION", "ITHRU", 100),
++                      g("IRRIGATION", "IROFF", "GS000"), g("IRRIGATION", "IMETH", "IR001"),
++                      g("IRRIGATION", "IRAMT", 10), g("IRRIGATION", "IREFF", 1)])
++        lines += tbl("NITROGEN", "NI", ["NMDEP", "NMTHR", "NAMNT", "NCODE", "NAOFF"],
++                     [g("NITROGEN", "NMDEP", 30), g("NITROGEN", "NMTHR", 50), g("NITROGEN", "NAMNT", 25),
++                      g("NITROGEN", "NCODE", "FE001"), g("NITROGEN", "NAOFF", "GS000")])
++        lines += tbl("RESIDUES", "RE", ["RIPCN", "RTIME", "RIDEP"],
++                     [g("RESIDUES", "RIPCN", 100), g("RESIDUES", "RTIME", 1), g("RESIDUES", "RIDEP", 20)])
++        lines += tbl("HARVEST", "HA", ["HFRST", "HLAST", "HPCNP", "HPCNR"],
++                     [0, d, g("HARVEST", "HPCNP", 100), g("HARVEST", "HPCNR", 0)])
+     dest.write_text("\n".join(lines) + "\n")
+diff --git a/sim-service/runner.py b/sim-service/runner.py
+index 28a7659..aa992b6 100644
+--- a/sim-service/runner.py
++++ b/sim-service/runner.py
+@@ -208,7 +208,10 @@ class StubRunner:
+ 
+ def build_runner(kind: str) -> Runner:
+     """Fail fast at startup on an unknown runner name (spec §4 style validation)."""
++    if kind == "dssat":            # imported lazily: needs the DSSAT binary + config
++        from dssat_runner import DssatRunner
++        return DssatRunner()
+     runners: dict[str, type[Runner]] = {"stub": StubRunner}
+     if kind not in runners:
+-        raise RuntimeError(f"unknown runner {kind!r}; known: {sorted(runners)}")
++        raise RuntimeError(f"unknown runner {kind!r}; known: {sorted(runners) + ['dssat']}")
+     return runners[kind]()
+-- 
+2.43.0
+
+diff --git a/frontend/src/api.ts b/frontend/src/api.ts
+index fcd2828..dcf8924 100644
+--- a/frontend/src/api.ts
++++ b/frontend/src/api.ts
+@@ -1,4 +1,4 @@
+-import type { LatLng, DayData, DayGrid, GridMeta, MetricKey, Bounds, Branch, Candidates, RecRunStatus } from "./types";
++import type { LatLng, DayData, DayGrid, GridMeta, MetricKey, Bounds, Branch, Candidates, ExperimentPreset, RecRunStatus } from "./types";
+ 
+ // Both base URLs come from the environment when set; the defaults match the current
+ // deployment (weather API on Render) and local development (recommendation service).
+@@ -61,12 +61,16 @@ export const simHealthUrl = `${SIM_API}/health`;
+ export const fetchCandidates = (signal?: AbortSignal) =>
+   getJSON<Candidates>(`${SIM_API}/api/candidates`, signal);
+ 
++export const fetchExperiments = (signal?: AbortSignal) =>
++  getJSON<{ experiments: ExperimentPreset[] }>(`${SIM_API}/api/experiments`, signal);
++
+ export async function startRecommendation(
+   body: {
+     farm: { lat: number; lon: number; establishment: "T" | "DS" };
+     branch: Branch;
+     planting_date: string;
+     pre_crop?: string;
++    experiment_id?: string;
+   },
+   signal?: AbortSignal,
+ ): Promise<{ run_id: string }> {
+diff --git a/frontend/src/recommend.tsx b/frontend/src/recommend.tsx
+index 108d713..19f62ee 100644
+--- a/frontend/src/recommend.tsx
++++ b/frontend/src/recommend.tsx
+@@ -5,8 +5,8 @@
+    Absolute yields are never summed (rule 4): the end screen shows separate figures. */
+ import { useEffect, useRef, useState } from "react";
+ import { centroid, loadStore, type Farm } from "./map";
+-import { fetchCandidates, getRecommendation, startRecommendation } from "./api";
+-import type { Branch, Candidates, CropEntry, RecommendationResult, RangeStat, VarietyEntry } from "./types";
++import { fetchCandidates, fetchExperiments, getRecommendation, startRecommendation } from "./api";
++import type { Branch, Candidates, CropEntry, ExperimentPreset, RecommendationResult, RangeStat, VarietyEntry } from "./types";
+ 
+ const BRANCHES: { value: Branch; label: string; hint: string }[] = [
+   { value: "rice", label: "Rice", hint: "Which rice variety to plant next" },
+@@ -26,6 +26,10 @@ function pctOf(r: RangeStat) {
+   if (r.p10 == null || r.p90 == null) return base;
+   return `${base} (${pct(r.p10)}–${pct(r.p90)})`;
+ }
++function presetSummary(x: ExperimentPreset) {
++  const est = x.establishment === "T" ? "transplanted" : "direct-seeded";
++  return `${est} · ${x.irrigation} irrigation · ${x.fertilizer_kg_n_ha} kg N/ha in ${x.fertilizer_events} splits`;
++}
+ function kg(v: number | null | undefined) {
+   return v == null ? "—" : `${Math.round(v).toLocaleString("en-US")} kg DM/ha`;
+ }
+@@ -45,6 +49,8 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
+   const [pdate, setPdate] = useState("");
+   const [cands, setCands] = useState<Candidates | null>(null);
+   const [candsError, setCandsError] = useState<string | null>(null);
++  const [presets, setPresets] = useState<ExperimentPreset[]>([]);
++  const [experimentId, setExperimentId] = useState(""); // "" = the service's default management
+   const [phase, setPhase] = useState<Phase>({ kind: "form" });
+   const [progress, setProgress] = useState<{ done: number; total: number | null } | null>(null);
+   const [error, setError] = useState<string | null>(null);
+@@ -52,6 +58,9 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
+   const poll = useRef<number | null>(null);
+ 
+   const farm: Farm | null = store.farms.find((f) => f.id === farmId) ?? null;
++  const preset = presets.find((x) => x.id === experimentId) ?? null;
++  // A preset fixes how the rice is established (transplanted vs. direct-seeded).
++  const effectiveEstablishment = preset ? preset.establishment : establishment;
+ 
+   useEffect(() => {
+     const c = new AbortController();
+@@ -62,6 +71,14 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
+       });
+     return () => c.abort();
+   }, []);
++  useEffect(() => {
++    // Presets are optional: if the list can't be loaded the picker is simply not shown.
++    const c = new AbortController();
++    fetchExperiments(c.signal)
++      .then((r) => setPresets(r.experiments))
++      .catch(() => { /* no picker */ });
++    return () => c.abort();
++  }, []);
+   useEffect(() => () => { if (poll.current) window.clearInterval(poll.current); }, []);
+ 
+   function watch(runId: string, after: (r: RecommendationResult) => void) {
+@@ -89,10 +106,11 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
+     setStarting(true);
+     const [lat, lng] = centroid(farm.points);
+     startRecommendation({
+-      farm: { lat, lon: lng, establishment },
++      farm: { lat, lon: lng, establishment: effectiveEstablishment },
+       branch,
+       planting_date: pdate,
+       ...(preCrop ? { pre_crop: preCrop } : {}),
++      ...(experimentId ? { experiment_id: experimentId } : {}),
+     })
+       .then(({ run_id }) => {
+         setProgress(null);
+@@ -169,15 +187,32 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
+               <fieldset className="plan-radios">
+                 <legend>How will the rice be established?</legend>
+                 <label className="plan-radio">
+-                  <input type="radio" name="est" checked={establishment === "T"} onChange={() => setEstablishment("T")} />
++                  <input type="radio" name="est" disabled={!!preset} checked={effectiveEstablishment === "T"} onChange={() => setEstablishment("T")} />
+                   <span><b>Transplanted</b></span>
+                 </label>
+                 <label className="plan-radio">
+-                  <input type="radio" name="est" checked={establishment === "DS"} onChange={() => setEstablishment("DS")} />
++                  <input type="radio" name="est" disabled={!!preset} checked={effectiveEstablishment === "DS"} onChange={() => setEstablishment("DS")} />
+                   <span><b>Direct-seeded</b></span>
+                 </label>
+               </fieldset>
+ 
++              {presets.length > 0 && (
++                <label className="plan-field">
++                  <span>Farming practice</span>
++                  <select value={experimentId} onChange={(e) => setExperimentId(e.target.value)}>
++                    <option value="">Standard practice (default)</option>
++                    {presets.map((x) => (
++                      <option key={x.id} value={x.id}>{x.title || x.id}</option>
++                    ))}
++                  </select>
++                  {preset && (
++                    <small className="plan-raw">
++                      {presetSummary(preset)}. Dates are moved onto your planting date; weather and soil are your farm's.
++                    </small>
++                  )}
++                </label>
++              )}
++
+               <label className="plan-field">
+                 <span>Planting date</span>
+                 <input
+diff --git a/frontend/src/types.ts b/frontend/src/types.ts
+index 84d6830..383bc8a 100644
+--- a/frontend/src/types.ts
++++ b/frontend/src/types.ts
+@@ -95,3 +95,16 @@ export interface RecRunStatus {
+   result: RecommendationResult | null;
+   error: string | null;
+ }
++
++// A selectable management preset (GET /api/experiments); its id goes in experiment_id.
++export interface ExperimentPreset {
++  id: string;
++  title: string;
++  cultivar: string;
++  cultivar_name: string;
++  establishment: "T" | "DS";
++  irrigation: "automatic" | "scheduled" | "rainfed";
++  fertilizer_events: number;
++  fertilizer_kg_n_ha: number;
++  file_planting_date: string;
++}
+diff --git a/sim-service/config.py b/sim-service/config.py
+index d4d162e..dfbff00 100644
+--- a/sim-service/config.py
++++ b/sim-service/config.py
+@@ -82,6 +82,13 @@ WEATHER_SOURCE = ("NASA POWER daily API (T2M/T2M_MAX/T2M_MIN/RH2M/ALLSKY_SFC_SW_
+                   "rainfall is POWER PRECTOTCORR, not GPM IMERG")
+ SOIL_OM_MODULE = "Godwin (DSSAT MESOM=G)"   # chosen and documented per spec §8; re-confirm at calibration
+ 
++# --- Experiment presets (AUDIT.md §9) ------------------------------------------------------
++# Directory of selectable .RIX management presets (GET /api/experiments). A selected file
++# supplies planting/irrigation/fertilizer management only; its dates are shifted onto the
++# requested planting date. Weather, soil, IC and cultivars still come from the app.
++EXPERIMENTS_DIR = Path(os.environ.get("ORYZON_EXPERIMENTS_DIR", str(SERVICE_DIR / "experiments"))) \
++    .expanduser().resolve()
++
+ # --- Runner selection ----------------------------------------------------------------------
+ 
+ # "stub" (default) or "dssat" (dssat_runner.DssatRunner: real DSSAT-CSM binary).
+diff --git a/sim-service/experiment_file.py b/sim-service/experiment_file.py
+index ac536c9..d4d2f54 100644
+--- a/sim-service/experiment_file.py
++++ b/sim-service/experiment_file.py
+@@ -22,6 +22,8 @@ from dataclasses import dataclass
+ from datetime import date, timedelta
+ from pathlib import Path
+ 
++from runner import FertilizerEvent, IrrigationEvent, Management
++
+ # DSSAT two-digit-year windowing (>= 51 -> 19xx, else 20xx), used only to make
+ # file dates comparable; absolute year is irrelevant because dates are rebased.
+ def _yyddd_to_date(code: int) -> date | None:
+@@ -143,7 +145,7 @@ def parse_filex(path: Path) -> ExperimentPreset:
+         experiment_id=path.stem,
+         title=title,
+         cultivar=cultivars.get("INGENO", "-99"),
+-        cultivar_name=cultivars.get("CNAME", ""),
++        cultivar_name=" ".join(sections["CULTIVARS"][0][1][0][3:]) if sections.get("CULTIVARS") else "",
+         soil_id=fields.get("ID_SOIL") if fields.get("ID_SOIL", "-99") != "-99" else None,
+         planting=planting,
+         irrigation=tuple(table("IRRIGATION", ("IDATE", "IRVAL"))),
+@@ -173,6 +175,87 @@ def _auto_tables(sections: dict) -> dict:
+     return out
+ 
+ 
++# -- presets: discovery, description, rebasing -------------------------------------------------
++
++
++def _event_date(code) -> date | None:
++    try:
++        return _yyddd_to_date(int(code)) if str(code) != "-99" else None
++    except (TypeError, ValueError):
++        return None
++
++
++def _float(v) -> float | None:
++    try:
++        f = float(v)
++    except (TypeError, ValueError):
++        return None
++    return None if f == -99 else f
++
++
++def load_presets(directory: Path) -> dict[str, ExperimentPreset]:
++    """Every .RIX file in `directory`, keyed by file stem. A missing directory means no
++    presets. A file that cannot be used fails loudly (startup validation), never silently."""
++    out: dict[str, ExperimentPreset] = {}
++    if not directory.is_dir():
++        return out
++    for path in sorted(directory.iterdir()):
++        if path.suffix.upper() != ".RIX" or not path.is_file():
++            continue
++        preset = parse_filex(path)
++        if preset.planting_date is None:
++            raise ValueError(f"experiment preset {path.name}: PLANTING DETAILS has no valid PDATE")
++        out[preset.experiment_id] = preset
++    return out
++
++
++def describe(p: ExperimentPreset) -> dict:
++    """The summary the preset picker shows (GET /api/experiments)."""
++    mode = str(p.controls.get("IRRIG", "R")).upper()
++    events = rebase_management(p, p.planting_date).fertilizer
++    return {
++        "id": p.experiment_id,
++        "title": p.title,
++        "cultivar": p.cultivar,
++        "cultivar_name": p.cultivar_name,
++        "establishment": p.establishment,
++        "irrigation": {"A": "automatic", "N": "rainfed"}.get(mode, "scheduled"),
++        "fertilizer_events": len(events),
++        "fertilizer_kg_n_ha": round(sum(e.kg_n_ha for e in events), 1),
++        "file_planting_date": p.planting_date.isoformat(),
++    }
++
++
++def rebase_management(p: ExperimentPreset, planting: date) -> Management:
++    """The preset's management with every date shifted so the file's planting date lands on
++    `planting` (intervals preserved). IRRIG=N (rainfed) drops the file's irrigation events,
++    as DSSAT ignores them; IRRIG=A turns on automatic irrigation."""
++    offset = planting - p.planting_date
++    mode = str(p.controls.get("IRRIG", "R")).upper()
++
++    irrigation: list[IrrigationEvent] = []
++    if mode != "N":
++        for r in p.irrigation:
++            d, mm = _event_date(r.get("IDATE")), _float(r.get("IRVAL"))
++            if d is not None and mm is not None:
++                irrigation.append(IrrigationEvent(d + offset, mm, r.get("IROP", "IR009")))
++    fertilizer: list[FertilizerEvent] = []
++    for r in p.fertilizer:
++        d, kg = _event_date(r.get("FDATE")), _float(r.get("FAMN"))
++        if d is not None and kg is not None:
++            fertilizer.append(FertilizerEvent(d + offset, kg, r.get("FMCD", "FE005"),
++                                              r.get("FACD", "AP002"), _float(r.get("FDEP")) or 0.0))
++    return Management(
++        establishment=p.establishment,
++        planting=dict(p.planting),
++        irrigation=tuple(irrigation),
++        irrigation_auto=(mode == "A"),
++        fertilizer=tuple(fertilizer),
++        controls=dict(p.controls),
++        auto={k: dict(v) for k, v in p.auto.items()},
++    )
++
++
+ # -- emission ---------------------------------------------------------------------------------
+ 
+ 
+diff --git a/sim-service/main.py b/sim-service/main.py
+index 27a52bd..08224a7 100644
+--- a/sim-service/main.py
++++ b/sim-service/main.py
+@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
+ from pydantic import BaseModel
+ 
+ import config
++from experiment_file import describe, load_presets
+ from orchestrator import Orchestrator, Progress
+ from runner import build_runner
+ from store import SoilStore, WeatherStore
+@@ -38,6 +39,7 @@ class RecommendRequest(BaseModel):
+     branch: Literal["rice", "yield_crops", "monggo"]
+     planting_date: date                        # the ONE UI date (spec §2)
+     pre_crop: str | None = None                # Yield Crops branch, stage 2: the picked crop
++    experiment_id: str | None = None           # optional management preset (GET /api/experiments)
+ 
+ 
+ def _validate_startup() -> None:
+@@ -60,6 +62,7 @@ def _validate_startup() -> None:
+ 
+ 
+ _validate_startup()
++PRESETS = load_presets(config.EXPERIMENTS_DIR)
+ RUNNER = build_runner(config.RUNNER)
+ 
+ app = FastAPI(title="ORYZON Recommendation API")
+@@ -87,6 +90,8 @@ def health():
+             "cover_term_dap": config.COVER_TERM_DAP,
+             "weather_source": config.WEATHER_SOURCE,
+             "soil_om_module": config.SOIL_OM_MODULE,
++            "experiments_dir": str(config.EXPERIMENTS_DIR),
++            "experiment_presets": sorted(PRESETS),
+             # "data_root": str(config.DATA_ROOT),
+             # "data_root_exists": config.DATA_ROOT.exists(),
+         },
+@@ -110,9 +115,16 @@ def candidates():
+     }
+ 
+ 
++@app.get("/api/experiments")
++def experiments():
++    """Selectable management presets (.RIX files in EXPERIMENTS_DIR), for the picker.
++    Pass an `id` as `experiment_id` on POST /api/recommendations."""
++    return {"experiments": [describe(p) for p in PRESETS.values()]}
++
++
+ WEATHER = WeatherStore()
+ SOILS = SoilStore(config.SOIL_FILE)
+-ORCHESTRATOR = Orchestrator(build_runner(config.RUNNER), WEATHER, SOILS)
++ORCHESTRATOR = Orchestrator(build_runner(config.RUNNER), WEATHER, SOILS, PRESETS)
+ 
+ _RUNS: dict[str, dict] = {}
+ _EXEC = ThreadPoolExecutor(max_workers=1)   # DSSAT is heavy: one recommendation at a time
+@@ -137,6 +149,9 @@ def _execute(run_id: str, req: dict) -> None:
+ def start_recommendation(req: RecommendRequest):
+     """Validate, queue the pipeline, return a run id. Poll the GET route for
+     progress and the final result (spec §6 progress/error states)."""
++    if req.experiment_id is not None and req.experiment_id not in PRESETS:
++        raise HTTPException(422, f"unknown experiment_id {req.experiment_id!r}; "
++                                 f"available: {sorted(PRESETS)}")
+     if req.branch == "rice" and req.pre_crop is not None:
+         raise HTTPException(422, "pre_crop is only valid for the yield_crops branch")
+     if req.branch == "yield_crops" and req.pre_crop is not None \
+diff --git a/sim-service/orchestrator.py b/sim-service/orchestrator.py
+index b48db23..f771241 100644
+--- a/sim-service/orchestrator.py
++++ b/sim-service/orchestrator.py
+@@ -22,6 +22,7 @@ from datetime import date, timedelta
+ import numpy as np
+ 
+ import config
++from experiment_file import ExperimentPreset, rebase_management
+ from runner import ExperimentSpec, ICData, Runner, SeasonSpec, SoilRef, Termination
+ from schema import (CropEntry, FailedRun, IdealStat, Metadata, PreCrop, RangeStat,
+                     RecommendationResult, SoilDelta, VarietyEntry)
+@@ -79,8 +80,10 @@ class _RunOutcome:
+ 
+ 
+ class Orchestrator:
+-    def __init__(self, runner: Runner, weather: WeatherStore, soil: SoilStore):
++    def __init__(self, runner: Runner, weather: WeatherStore, soil: SoilStore,
++                 presets: dict[str, ExperimentPreset] | None = None):
+         self.runner = runner
++        self.presets = presets or {}
+         self.weather = weather
+         self.soil = soil
+         self._cache: dict[tuple, _RunOutcome] = {}
+@@ -130,8 +133,9 @@ class Orchestrator:
+         type, scenario, DSSAT version, soil/IC version)."""
+         ic_key = "none" if ic is None else hashlib.md5(
+             repr((ic.layers, ic.planting_date)).encode()).hexdigest()[:8]
++        mg_key = hashlib.md5(repr([s.management for s in seasons]).encode()).hexdigest()[:8]
+         key = (round(self._lat, 4), round(self._lon, 4), label, run_type, window[0],
+-               tuple(s.planting_date for s in seasons),
++               tuple(s.planting_date for s in seasons), mg_key,
+                self.runner.dssat_version(), self.runner.soil_version(), ic_key)
+         if key in self._cache:
+             tick()
+@@ -244,6 +248,26 @@ class Orchestrator:
+         failed: list[FailedRun] = []
+         scenarios = [w[0] for w in windows]
+ 
++        # Management preset (AUDIT.md §9): applies to every RICE season, actual and ideal, with
++        # its dates shifted onto that season's own planting date. Establishment follows the file.
++        exp_id = req.get("experiment_id")
++        preset = None
++        if exp_id:
++            preset = self.presets.get(exp_id)
++            if preset is None:
++                raise ValueError(f"unknown experiment preset {exp_id!r}")
++            if preset.establishment != est:
++                notes.append(f"Establishment set to "
++                             f"{'transplanted' if preset.establishment == 'T' else 'direct-seeded'} "
++                             f"to match preset {exp_id}.")
++                est = preset.establishment
++            notes.append(f"Management preset {exp_id} ({preset.title}) applied to the rice season; "
++                         f"its dates are shifted onto the planting date. Weather, soil and "
++                         f"initial conditions are still the farm's.")
++
++        def mg(d: date):
++            return rebase_management(preset, d) if preset else None
++
+         varieties = self.runner.calibrated_rice_varieties()
+         crops = self.runner.calibrated_yield_crops()
+ 
+@@ -262,12 +286,12 @@ class Orchestrator:
+                 ic = self._ic(layers, pdate_s)
+                 for v in varieties:
+                     actual[v, w] = self._run(label=f"rice:{v}",
+-                                             seasons=[SeasonSpec("rice", v, pdate_s, est)],
++                                             seasons=[SeasonSpec("rice", v, pdate_s, est, management=mg(pdate_s))],
+                                              potential=False, weather=weather, soil_ref=soil_ref,
+                                              ic=ic, work_root=work_root, window=w,
+                                              run_type="actual", tick=tick)
+                     ideal[v, w] = self._run(label=f"rice:{v}",
+-                                            seasons=[SeasonSpec("rice", v, pdate_s, est)],
++                                            seasons=[SeasonSpec("rice", v, pdate_s, est, management=mg(pdate_s))],
+                                             potential=True, weather=weather, soil_ref=soil_ref,
+                                             ic=None, work_root=work_root, window=w,
+                                             run_type="ideal", tick=tick)
+@@ -375,12 +399,12 @@ class Orchestrator:
+                 for v in varieties:
+                     seq = self._run(label=f"{pre_crop}->rice:{v}",
+                                     seasons=[SeasonSpec("yield_crop", pre_crop, pdate_s, est),
+-                                             SeasonSpec("rice", v, pdate2, est)],
++                                             SeasonSpec("rice", v, pdate2, est, management=mg(pdate2))],
+                                     potential=False, weather=weather, soil_ref=soil_ref,
+                                     ic=ic, work_root=work_root, window=w,
+                                     run_type="actual", tick=tick)
+                     ideal_rice = self._run(label=f"rice:{v}",
+-                                           seasons=[SeasonSpec("rice", v, pdate2, est)],
++                                           seasons=[SeasonSpec("rice", v, pdate2, est, management=mg(pdate2))],
+                                            potential=True, weather=weather, soil_ref=soil_ref,
+                                            ic=None, work_root=work_root, window=w,
+                                            run_type="ideal", tick=tick)
+@@ -430,12 +454,12 @@ class Orchestrator:
+                                 seasons=[SeasonSpec("cover", "mung bean", pdate_s, est,
+                                                     Termination(config.COVER_TERM_DAP,
+                                                                 config.COVER_RESIDUE)),
+-                                         SeasonSpec("rice", v, pdate2, est)],
++                                         SeasonSpec("rice", v, pdate2, est, management=mg(pdate2))],
+                                 potential=False, weather=weather, soil_ref=soil_ref,
+                                 ic=ic, work_root=work_root, window=w,
+                                 run_type="actual", tick=tick)
+                 ideal_rice = self._run(label=f"rice:{v}",
+-                                       seasons=[SeasonSpec("rice", v, pdate2, est)],
++                                       seasons=[SeasonSpec("rice", v, pdate2, est, management=mg(pdate2))],
+                                        potential=True, weather=weather, soil_ref=soil_ref,
+                                        ic=None, work_root=work_root, window=w,
+                                        run_type="ideal", tick=tick)
+-- 
+2.43.0

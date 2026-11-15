@@ -1,4 +1,4 @@
-import type { LatLng, DayData, DayGrid, GridMeta, MetricKey, Bounds, Branch, Candidates, RecRunStatus } from "./types";
+import type { LatLng, DayData, DayGrid, GridMeta, MetricKey, Bounds, Branch, Candidates, ExperimentPreset, RecRunStatus } from "./types";
 
 // Both base URLs come from the environment when set; the defaults match the current
 // deployment (weather API on Render) and local development (recommendation service).
@@ -61,12 +61,16 @@ export const simHealthUrl = `${SIM_API}/health`;
 export const fetchCandidates = (signal?: AbortSignal) =>
   getJSON<Candidates>(`${SIM_API}/api/candidates`, signal);
 
+export const fetchExperiments = (signal?: AbortSignal) =>
+  getJSON<{ experiments: ExperimentPreset[] }>(`${SIM_API}/api/experiments`, signal);
+
 export async function startRecommendation(
   body: {
     farm: { lat: number; lon: number; establishment: "T" | "DS" };
     branch: Branch;
     planting_date: string;
     pre_crop?: string;
+    experiment_id?: string;
   },
   signal?: AbortSignal,
 ): Promise<{ run_id: string }> {

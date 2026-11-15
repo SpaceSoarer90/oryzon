@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import config
+from experiment_file import describe, load_presets
 from orchestrator import Orchestrator, Progress
 from runner import build_runner
 from store import SoilStore, WeatherStore
@@ -38,6 +39,7 @@ class RecommendRequest(BaseModel):
     branch: Literal["rice", "yield_crops", "monggo"]
     planting_date: date                        # the ONE UI date (spec §2)
     pre_crop: str | None = None                # Yield Crops branch, stage 2: the picked crop
+    experiment_id: str | None = None           # optional management preset (GET /api/experiments)
 
 
 def _validate_startup() -> None:
@@ -60,6 +62,7 @@ def _validate_startup() -> None:
 
 
 _validate_startup()
+PRESETS = load_presets(config.EXPERIMENTS_DIR)
 RUNNER = build_runner(config.RUNNER)
 
 app = FastAPI(title="ORYZON Recommendation API")
@@ -87,6 +90,8 @@ def health():
             "cover_term_dap": config.COVER_TERM_DAP,
             "weather_source": config.WEATHER_SOURCE,
             "soil_om_module": config.SOIL_OM_MODULE,
+            "experiments_dir": str(config.EXPERIMENTS_DIR),
+            "experiment_presets": sorted(PRESETS),
             # "data_root": str(config.DATA_ROOT),
             # "data_root_exists": config.DATA_ROOT.exists(),
         },
@@ -110,9 +115,16 @@ def candidates():
     }
 
 
+@app.get("/api/experiments")
+def experiments():
+    """Selectable management presets (.RIX files in EXPERIMENTS_DIR), for the picker.
+    Pass an `id` as `experiment_id` on POST /api/recommendations."""
+    return {"experiments": [describe(p) for p in PRESETS.values()]}
+
+
 WEATHER = WeatherStore()
 SOILS = SoilStore(config.SOIL_FILE)
-ORCHESTRATOR = Orchestrator(build_runner(config.RUNNER), WEATHER, SOILS)
+ORCHESTRATOR = Orchestrator(build_runner(config.RUNNER), WEATHER, SOILS, PRESETS)
 
 _RUNS: dict[str, dict] = {}
 _EXEC = ThreadPoolExecutor(max_workers=1)   # DSSAT is heavy: one recommendation at a time
@@ -137,6 +149,9 @@ def _execute(run_id: str, req: dict) -> None:
 def start_recommendation(req: RecommendRequest):
     """Validate, queue the pipeline, return a run id. Poll the GET route for
     progress and the final result (spec §6 progress/error states)."""
+    if req.experiment_id is not None and req.experiment_id not in PRESETS:
+        raise HTTPException(422, f"unknown experiment_id {req.experiment_id!r}; "
+                                 f"available: {sorted(PRESETS)}")
     if req.branch == "rice" and req.pre_crop is not None:
         raise HTTPException(422, "pre_crop is only valid for the yield_crops branch")
     if req.branch == "yield_crops" and req.pre_crop is not None \
