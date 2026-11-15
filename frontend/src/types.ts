@@ -88,7 +88,8 @@ export interface RecommendationResult {
   notes: string[];
   failed_runs: FailedRun[];
 }
-export interface Candidates { rice_varieties: string[]; yield_crops: string[]; source: string }
+export interface RiceCultivar { id: string; name: string }
+export interface Candidates { rice_varieties: RiceCultivar[]; yield_crops: string[]; source: string; weather_windows: number }
 export interface RecRunStatus {
   status: "queued" | "running" | "done" | "failed";
   progress: { done: number; total: number | null };
