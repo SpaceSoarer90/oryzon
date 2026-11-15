@@ -3011,3 +3011,1412 @@ body {
   /* for more relief showing through the colour, try mix-blend-mode: overlay or soft-light (both subtler) */
   mix-blend-mode: normal;
 }
+
+/* ---------- place search (magnifying glass in the top bar) ---------- */
+/* While searching, the top bar sits above the layer buttons and the readings, and a dark veil covers them,
+   so nothing can show through or overlap the results. */
+.topbar {
+  z-index: 1300;
+}
+
+.search-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1250;
+  background: rgba(15, 22, 17, 0.45);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  animation: search-fade 0.18s ease both;
+}
+
+.place-pill {
+  position: relative; /* the results hang from the pill */
+  transition: box-shadow 0.2s ease;
+}
+.place-pill.searching {
+  box-shadow: 0 0 0 3px var(--olive-deep), 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.search-btn {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--olive-deep);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+.search-btn:hover {
+  background: var(--olive-dark);
+}
+.search-btn:active {
+  transform: scale(0.94);
+}
+.search-btn:focus-visible,
+.search-close:focus-visible {
+  outline: 3px solid var(--olive-dark);
+  outline-offset: 2px;
+}
+
+.search-form {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 16px; /* 16px stops iPhones from zooming the page when the box is focused */
+  font-weight: 700;
+  color: var(--ink);
+  padding: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.search-input::placeholder {
+  font-weight: 500;
+  color: var(--muted);
+}
+.search-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.search-close {
+  flex: none;
+  width: 30px;
+  height: 40px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.search-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  right: 0;
+  border-radius: 24px;
+  background: var(--cream);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  animation: search-drop 0.18s ease both;
+}
+
+.search-head {
+  padding: 12px 18px 6px;
+  color: var(--olive-dark);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.search-results {
+  margin: 0;
+  padding: 4px 8px 8px;
+  list-style: none;
+  max-height: min(52vh, 420px);
+  overflow-y: auto;
+}
+
+.search-hit {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 10px;
+  border: 0;
+  border-radius: 16px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.search-hit:hover,
+.search-hit:focus-visible {
+  background: rgba(115, 122, 51, 0.14);
+  outline: none;
+}
+
+.search-hit-pin {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--olive);
+  color: var(--olive-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.search-hit-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.search-hit-text b {
+  font-size: 15px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-hit-text small {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-hit-dist {
+  flex: none;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--olive-dark);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.search-note {
+  padding: 14px 18px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+@keyframes search-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes search-drop {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .search-scrim,
+  .search-panel {
+    animation: none;
+  }
+}
+
+/* ---------- pill: the whole bar is the search target ---------- */
+.place-pill {
+  cursor: pointer;
+}
+.place-pill.searching {
+  cursor: text;
+}
+
+.search-spin {
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+/* ---------- loading bar along the top edge ---------- */
+.busy-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  z-index: 1400;
+  overflow: hidden;
+  background: rgba(115, 122, 51, 0.25);
+  pointer-events: none;
+}
+.busy-bar::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--olive-dark), var(--gold), transparent);
+  animation: busy-slide 1.1s ease-in-out infinite;
+}
+@keyframes busy-slide {
+  from { left: -40%; }
+  to { left: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .busy-bar::before {
+    animation: none;
+    left: 0;
+    width: 100%;
+    opacity: 0.6;
+  }
+}
+
+/* ---------- My Farms: delete button on each card ---------- */
+.farm-card-wrap {
+  position: relative;
+}
+.farm-card-delete {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 5; /* above the little map inside the card */
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(20, 20, 18, 0.7);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+.farm-card-delete:hover,
+.farm-card-delete:focus-visible {
+  background: #a33a1c;
+}
+.farm-card-delete:active {
+  transform: scale(0.92);
+}
+
+/* ---------- Farm details (visual summary) ---------- */
+.fd {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 8px;
+}
+
+.fd-hero {
+  background: var(--card);
+  border-radius: 24px;
+  padding: 10px 10px 14px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+}
+.fd-hero .farm-thumb {
+  aspect-ratio: 16 / 9;
+}
+.fd-hero-text {
+  padding: 12px 8px 0;
+}
+.fd-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.fd-title-row h3 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+.fd-edit {
+  flex: none;
+  padding: 7px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--olive);
+  color: var(--olive-dark);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.fd-edit:hover {
+  background: var(--olive-deep);
+  color: #fff;
+}
+.fd-loc {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.3;
+}
+.fd-loc svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--olive-dark);
+}
+
+.fd-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.fd-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 6px 12px;
+  border-radius: 20px;
+  background: var(--olive-dark);
+  color: var(--cream);
+  text-align: center;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.14);
+}
+.fd-stat b {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.05;
+}
+.fd-stat .fd-stat-icon {
+  font-size: 28px;
+}
+.fd-stat small {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+.fd-stat span {
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.fd-card {
+  background: var(--card);
+  border-radius: 22px;
+  padding: 14px 16px 16px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+}
+.fd-card h4,
+.fd-heading {
+  margin: 0 0 12px;
+  color: var(--olive-dark);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.fd-heading {
+  margin: 6px 4px -2px;
+}
+
+.fd-water {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 5px;
+  border-radius: 999px;
+  background: #eef2e0;
+}
+.fd-water-step {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 4px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.fd-water-step.on {
+  background: var(--olive-dark);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.fd-split {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.fd-donut {
+  flex: none;
+  width: 140px;
+  height: 140px;
+}
+.fd-donut-num {
+  fill: var(--ink);
+  font-size: 15px;
+  font-weight: 800;
+}
+.fd-donut-unit {
+  fill: var(--muted);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.fd-legend {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.fd-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.fd-legend i {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+}
+.fd-legend span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fd-legend b {
+  flex: none;
+}
+
+.fd-plot {
+  background: var(--card);
+  border-radius: 22px;
+  padding: 14px 16px 16px;
+  border-left: 8px solid var(--plot);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+}
+.fd-plot header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.fd-plot h5 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+}
+.fd-plot h5 i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--plot);
+}
+.fd-plot-area {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #eef2e0;
+  color: var(--olive-dark);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.fd-share {
+  height: 6px;
+  margin: 10px 0 4px;
+  border-radius: 3px;
+  background: #e3e9d2;
+  overflow: hidden;
+}
+.fd-share div {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--plot);
+}
+
+.fd-crop {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.fd-crop-emoji {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: #eef2e0;
+  font-size: 26px;
+}
+.fd-crop > div {
+  min-width: 0;
+}
+.fd-crop b {
+  display: block;
+  font-size: 17px;
+  font-weight: 800;
+}
+.fd-crop small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.fd-harvest {
+  margin-left: auto;
+  text-align: right;
+}
+.fd-harvest b {
+  color: var(--olive-dark);
+  font-size: 18px;
+}
+
+.fd-timeline {
+  margin-top: 14px;
+}
+.fd-tl-dates {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.fd-tl-dates span {
+  display: flex;
+  flex-direction: column;
+}
+.fd-tl-dates span:last-child {
+  text-align: right;
+}
+.fd-tl-dates small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.fd-tl-dates em {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #eef2e0;
+  color: var(--olive-dark);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+}
+.fd-tl-track {
+  display: flex;
+  align-items: center;
+  margin-top: 8px;
+}
+.fd-tl-track i {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--plot);
+}
+.fd-tl-track b {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--plot), var(--olive-dark));
+}
+.fd-tl-track i:last-child {
+  background: var(--olive-dark);
+}
+
+.fd-perf {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+  font-size: 14px;
+  font-weight: 800;
+}
+.fd-meter {
+  display: flex;
+  gap: 4px;
+}
+.fd-meter i {
+  width: 26px;
+  height: 8px;
+  border-radius: 4px;
+  background: #e3e9d2;
+}
+
+.fd-empty {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+@media (max-width: 380px) {
+  .fd-split {
+    flex-direction: column;
+  }
+}
+
+/* =====================================================================================================
+   Responsive layout: portrait, landscape, half-width windows and full-screen desktops.
+   The sheet's width is one variable (--sheet-w). Content inside the sheet reacts to the sheet's own width
+   (container queries), so it re-flows the same way whatever the window or the phone's orientation.
+   ===================================================================================================== */
+
+.app {
+  --sheet-w: min(100%, 520px);
+}
+.sheet {
+  width: var(--sheet-w);
+  container-type: inline-size;
+  container-name: sheet;
+}
+.sheet-body {
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(115, 122, 51, 0.5) transparent;
+}
+
+/* tablets and small windows: a slightly wider sheet */
+@media (min-width: 700px) {
+  .app {
+    --sheet-w: min(100%, 600px);
+  }
+  .sheet {
+    border-radius: 32px 32px 0 0;
+  }
+  /* the search bar keeps a sensible length instead of stretching across the whole screen */
+  .place-pill {
+    max-width: 560px;
+  }
+}
+
+/* laptops and desktops: the sheet grows with the window (and shrinks again when the window is halved) */
+@media (min-width: 1000px) {
+  .app {
+    --sheet-w: clamp(560px, 46vw, 780px);
+  }
+  .app.sheet-half .map-timeline,
+  .app.sheet-full .map-timeline {
+    width: clamp(180px, calc((100% - var(--sheet-w)) / 2 - 24px), 340px);
+  }
+}
+
+/* desktop windows that are wide but short: the half-open sheet gets a usable height */
+@media (orientation: landscape) and (min-width: 1000px) and (max-height: 700px) {
+  .app.sheet-half {
+    --sheet-h: min(max(62%, 380px), calc(100% - var(--safe-top) - 76px - var(--safe-bottom)));
+  }
+}
+
+/* landscape phones and small landscape windows: the sheet becomes a panel on the left, so the map
+   stays visible next to it instead of being covered. */
+@media (orientation: landscape) and (max-height: 600px) and (max-width: 999px) {
+  .app {
+    --sheet-w: min(48vw, 440px);
+  }
+  .app.sheet-half,
+  .app.sheet-full {
+    --sheet-h: calc(100% - var(--safe-top) - 76px - var(--safe-bottom));
+  }
+  .sheet {
+    left: 12px;
+    transform: none;
+    border-radius: 26px 26px 0 0;
+  }
+  .sheet-head {
+    gap: 8px;
+    padding: 8px 0 6px;
+  }
+  .sheet-handle {
+    width: 56px;
+  }
+  .sheet-title {
+    font-size: 22px;
+  }
+  .leaflet-control-attribution {
+    margin-bottom: 2px;
+  }
+  .farm-label {
+    display: none;
+  }
+}
+
+/* ---------- inside the sheet: re-flow by the sheet's own width ---------- */
+
+/* the dashboard and the My Farms / Plan screens lay out on a grid; every item spans the full width unless it says otherwise */
+.sheet-body.banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 16px;
+  align-content: start;
+}
+.sheet-body.banner > * {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+/* farm details */
+.fd {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+.fd-split {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.fd-legend {
+  flex: 1 1 150px;
+}
+
+/* a roomy sheet (about 640px and wider): two columns */
+@container sheet (min-width: 640px) {
+  .sheet-body.banner {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* the day's readings on the left, the yield chart on the right */
+  .sheet-body.banner > .dash-card:not(:only-child),
+  .sheet-body.banner > .dash-panel {
+    grid-column: auto;
+    align-self: start;
+  }
+
+  .fd {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .fd > .fd-hero,
+  .fd > .fd-stats,
+  .fd > .fd-heading,
+  .fd > .fd-card[aria-label="Harvest by season"],
+  .fd > .farm-delete-btn {
+    grid-column: 1 / -1;
+  }
+  .fd-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 18px;
+    padding: 12px;
+  }
+  .fd-hero .farm-thumb {
+    aspect-ratio: 16 / 10;
+  }
+  .fd-hero-text {
+    padding: 0 8px 0 0;
+  }
+  .fd-title-row h3 {
+    font-size: 30px;
+  }
+  .fd-stat b {
+    font-size: 34px;
+  }
+  .sheet-body {
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+}
+
+/* a narrow sheet (a small phone, or a half-width window): tighter spacing, nothing cut off */
+@container sheet (max-width: 400px) {
+  .fd-stats {
+    gap: 8px;
+  }
+  .fd-stat b {
+    font-size: 26px;
+  }
+  .fd-water-step {
+    font-size: 12px;
+    padding: 9px 2px;
+    gap: 4px;
+  }
+  .fd-title-row h3 {
+    font-size: 22px;
+  }
+  .sheet-body {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+
+/* =====================================================================================================
+   Header colours (Dashboard, My Farms, Plan next season, Set up farm)
+   The scrolling content used to be cut with a hard edge inside the olive area, and the header's curve
+   was a very wide, flat ellipse. Now the content fades softly into the header as it scrolls up, and the
+   curve is a gentle, even arc whatever the sheet's width.
+   ===================================================================================================== */
+
+.sheet-head.banner {
+  padding-bottom: 60px;
+  background: linear-gradient(180deg, #7d8438 0%, var(--olive-dark) 55%, #6a7130 100%);
+  border-radius: 0 0 50% 50% / 0 0 40px 40px;
+  box-shadow: 0 8px 16px -8px rgba(55, 60, 20, 0.45);
+}
+
+.sheet-body.banner {
+  margin-top: -44px;
+  padding-top: 30px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 26px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 26px);
+}
+
+.sheet-body.setup {
+  margin-top: -52px;
+  padding-top: 22px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 20px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 20px);
+}
+
+/* the photo header ends in the page colour, so nothing is left over below it */
+.sheet-head.setup {
+  background-color: var(--olive-dark);
+  margin-bottom: -1px;
+}
+
+@media (orientation: landscape) and (max-height: 600px) and (max-width: 999px) {
+  .sheet-head.banner {
+    padding-bottom: 36px;
+    border-radius: 0 0 50% 50% / 0 0 24px 24px;
+  }
+  .sheet-body.banner {
+    margin-top: -26px;
+    padding-top: 20px;
+  }
+  .sheet-head.setup {
+    padding-bottom: 40px;
+  }
+  .sheet-body.setup {
+    margin-top: -30px;
+    padding-top: 14px;
+  }
+}
+
+/* ---------- farm name chip under the search bar ---------- */
+.farm-label {
+  top: calc(var(--safe-top) + 62px);
+  display: flex;
+  justify-content: center;
+  padding: 0 12px;
+  text-shadow: none;
+}
+
+.farm-label-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 6px 18px 6px 6px;
+  border-radius: 999px;
+  background: rgba(236, 243, 220, 0.92);
+  border: 2px solid rgba(115, 122, 51, 0.45);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.farm-label-pin {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--olive-dark);
+  color: var(--cream);
+}
+
+.farm-label-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- full-screen desktop: centred search bar, tidy corners ---------- */
+@media (min-width: 700px) {
+  .topbar {
+    justify-content: center;
+  }
+  .topbar .menu-btn {
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+  .place-pill {
+    flex: 0 1 560px;
+    max-width: 560px;
+  }
+}
+
+@media (min-width: 1100px) {
+  .layers {
+    top: var(--safe-top);
+  }
+  .layers-stack {
+    border-radius: 26px;
+    padding: 4px 10px 8px 18px;
+  }
+  .layers-toggle {
+    height: 44px;
+    font-size: 14px;
+  }
+
+  .conditions,
+  .cond-pop {
+    top: calc(var(--safe-top) + 68px);
+  }
+  .conditions {
+    width: 132px;
+  }
+
+  .farm-label-chip {
+    font-size: 16px;
+    padding: 7px 22px 7px 7px;
+  }
+  .farm-label-pin {
+    width: 30px;
+    height: 30px;
+  }
+}
+
+
+/* =====================================================================================================
+   Plan next season: same look as the Set up farm screen (rounded cards, olive pills, dark buttons)
+   ===================================================================================================== */
+
+/* the dashboard button that opens it */
+.dash-details.plan-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 10px;
+  background: #2b3a1a;
+  color: var(--cream);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+}
+.dash-details.plan-cta:active {
+  background: #1f2b12;
+}
+.dash-details.plan-cta:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
+}
+
+.plan {
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 0;
+  overflow: visible;
+  background: none;
+}
+
+.plan-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.plan-top {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+}
+.plan-back {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: auto;
+  height: 36px;
+  padding: 0 14px 0 8px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--olive);
+  color: var(--olive-dark);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.plan-back:active {
+  background: var(--olive-deep);
+}
+.plan-back:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
+}
+.plan-intro {
+  margin: 0 4px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* each question sits in a soft card, like the Set up farm cards */
+.plan-field,
+.plan-radios {
+  margin: 0;
+  padding: 14px 14px 12px;
+  border: 0;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  gap: 8px;
+}
+.plan-field span,
+.plan-radios legend {
+  margin: 0 4px;
+  padding: 0;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.plan-radios legend {
+  float: left;
+  width: 100%;
+  margin-bottom: 8px;
+}
+.plan-radios legend + * {
+  clear: both;
+}
+
+.plan-field select,
+.plan-field input {
+  width: 100%;
+  min-width: 0;
+  height: 46px;
+  padding: 0 16px;
+  border: 2px solid #8b917a;
+  border-radius: 23px;
+  background-color: rgba(255, 255, 255, 0.6);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 500;
+}
+.plan-field select {
+  padding-right: 38px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232b1a0c' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 20px;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+.plan-field select:focus-visible,
+.plan-field input:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 1px;
+}
+
+/* choices: tappable rows with round radio buttons */
+.plan-radio {
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px 14px;
+  border: 2px solid transparent;
+  border-radius: 20px;
+  background: rgba(236, 243, 220, 0.8);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.plan-radio:has(input:checked) {
+  border-color: #2b3a1a;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.plan-radio:has(input:focus-visible) {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
+}
+.plan-radio input {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  border: 2px solid #2b3a1a;
+  border-radius: 50%;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+.plan-radio input:checked {
+  background: radial-gradient(circle, #2b3a1a 0 45%, transparent 50%);
+}
+.plan-radio span b {
+  font-size: 16px;
+  font-weight: 800;
+}
+.plan-radio small {
+  font-size: 13px;
+}
+
+.plan-note {
+  margin: 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* buttons: same as Next / Back in Set up farm */
+.plan-run {
+  height: 56px;
+  padding: 0 28px;
+  border: 0;
+  border-radius: 28px;
+  background: #2b3a1a;
+  color: var(--cream);
+  font: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+.plan-run:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 3px;
+}
+.plan-run.secondary {
+  height: 48px;
+  border: 2px solid var(--olive-dark);
+  background: transparent;
+  color: var(--olive-dark);
+  font-size: 16px;
+  box-shadow: none;
+}
+.plan-run.secondary:active {
+  background: var(--olive);
+}
+.plan-run:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.plan-run .spinner {
+  border-color: rgba(236, 243, 220, 0.4);
+  border-top-color: var(--cream);
+}
+
+.plan-error {
+  margin: 0;
+  padding: 12px 16px;
+  border: 2px solid #a33a1c;
+  border-radius: 18px;
+  background: #fde7df;
+  color: #8c2d12;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* result screens: white rounded cards like the Dashboard */
+.plan-step,
+.plan-running {
+  gap: 14px;
+  padding: 20px 18px 18px;
+  border: 0;
+  border-radius: 30px;
+  background: var(--card);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+.plan-step h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+}
+.plan-ask {
+  margin: 6px 0 0;
+  font-size: 18px;
+  font-weight: 800;
+}
+.plan-running {
+  justify-items: center;
+  text-align: center;
+}
+.plan-running .spinner {
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  border-width: 3px;
+}
+
+.plan-entry {
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--cream);
+}
+.plan-badge {
+  min-width: 40px;
+  padding: 5px 10px;
+  background: var(--olive-dark);
+  color: var(--cream);
+  font-size: 14px;
+}
+.plan-choice {
+  min-height: 52px;
+  padding: 8px 14px;
+  border: 2px solid #2b3a1a;
+  border-radius: 26px;
+  background: transparent;
+  color: #2b3a1a;
+  font-size: 16px;
+}
+.plan-choice:active {
+  background: var(--olive);
+}
+.plan-choice:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
+}
+.plan-precrop,
+.plan-yieldbox {
+  border-radius: 22px;
+  background: var(--cream);
+  border: 0;
+}
+.plan-yieldbox {
+  padding: 12px 14px;
+}
+
+@media (min-width: 520px) {
+  .plan {
+    max-width: 520px;
+  }
+  .plan-choices {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ---------- latest day by default, past data on request ---------- */
+.tl-date.tl-date-left {
+  text-align: left;
+  padding-left: 4px;
+}
+
+.dash-past {
+  display: block;
+  margin: 12px auto 0;
+  height: 36px;
+  padding: 0 18px;
+  border: 2px solid var(--olive-dark);
+  border-radius: 18px;
+  background: transparent;
+  color: var(--olive-dark);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.dash-past:active {
+  background: var(--olive);
+}
+.dash-past:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
+}
+
+
+/* ---------- past-data day picker, inside the Dashboard card ---------- */
+.dash-picker {
+  margin-top: 12px;
+  padding: 10px 12px 12px;
+  border-radius: 22px;
+  background: var(--cream);
+}
+.dp-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dp-step {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 0 0 3px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--olive);
+  color: var(--ink);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+.dp-step:active:not(:disabled) {
+  background: var(--olive-deep);
+}
+.dp-step:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.dp-step:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
+}
+.dp-date {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.dp-date small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.dp-range.tl-range::-webkit-slider-runnable-track {
+  background: linear-gradient(90deg, var(--olive-dark) var(--pct), rgba(43, 26, 12, 0.18) var(--pct));
+}
+.dp-range.tl-range::-moz-range-track {
+  background: rgba(43, 26, 12, 0.18);
+}
+.dp-range.tl-range::-moz-range-progress {
+  background: var(--olive-dark);
+}
+.dp-range.tl-range:focus-visible {
+  outline: 3px solid var(--green);
+}

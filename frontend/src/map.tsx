@@ -178,7 +178,6 @@ interface Plot {
   soil: SoilInfo;
 }
 
-const MOISTURE_MAX = 60;
 const CROPS = ["Rice", "Corn", "Onion", "Garlic", "Mung beans", "Vegetables", "Other"];
 const PERFORMANCES: { value: Performance; label: string }[] = [
   { value: "good", label: "Good Harvest" },
@@ -186,20 +185,6 @@ const PERFORMANCES: { value: Performance; label: string }[] = [
   { value: "poor", label: "Poor Harvest" },
   { value: "failure", label: "Crop Failure" },
   { value: "unknown", label: "I don't know" },
-];
-const SOIL_TEXTURES = [
-  "Clay",
-  "Silty clay",
-  "Sandy clay",
-  "Clay loam",
-  "Silty clay loam",
-  "Sandy clay loam",
-  "Loam",
-  "Silt loam",
-  "Sandy loam",
-  "Loamy sand",
-  "Sand",
-  "I don't know",
 ];
 const SOIL_SOURCES: { value: SoilSource; label: string }[] = [
   { value: "sensor", label: "Soil moisture sensor" },
@@ -694,6 +679,97 @@ async function reverseGeocode(lat: number, lng: number, signal: AbortSignal): Pr
   }
 }
 
+/* ---------- place search ---------- */
+
+interface PlaceHit {
+  name: string; // the place itself, e.g. "Alaminos"
+  detail: string; // where it is, e.g. "Pangasinan, Ilocos Region, Philippines"
+  lat: number;
+  lng: number;
+  km: number; // distance from the middle of the map when the search was made
+  bbox?: [number, number, number, number]; // south, west, north, east
+}
+
+function distanceKm(a: LatLng, b: LatLng): number {
+  const R = 6371.0088;
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(b[0] - a[0]);
+  const dLng = rad(b[1] - a[1]);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+function formatDistance(km: number): string {
+  if (km < 1) return `${Math.max(10, Math.round((km * 1000) / 10) * 10)} m`;
+  if (km < 10) return `${km.toFixed(1)} km`;
+  return `${Math.round(km).toLocaleString("en-US")} km`;
+}
+
+// Looks a place name up on OpenStreetMap's Nominatim (the same service used for reverse geocoding above).
+// Results near the map's view are favoured, and the list is sorted nearest first from the camera's centre.
+async function searchPlaces(q: string, map: L.Map | null, signal: AbortSignal): Promise<PlaceHit[]> {
+  const center: LatLng = map ? [map.getCenter().lat, map.getCenter().lng] : START_CENTER;
+  let url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=10&accept-language=en&q=${encodeURIComponent(q)}`;
+  if (map) {
+    const b = map.getBounds().pad(1);
+    const clampLng = (x: number) => Math.max(-180, Math.min(180, x));
+    const clampLat = (x: number) => Math.max(-90, Math.min(90, x));
+    // viewbox = left,top,right,bottom. It only nudges the ranking (no "bounded=1"), so far-away places still appear.
+    url += `&viewbox=${clampLng(b.getWest())},${clampLat(b.getNorth())},${clampLng(b.getEast())},${clampLat(b.getSouth())}`;
+  }
+  const res = await fetch(url, { signal });
+  if (!res.ok) throw new Error(`Search failed (${res.status})`);
+  const json = (await res.json()) as { display_name: string; lat: string; lon: string; boundingbox?: string[] }[];
+  const seen = new Set<string>();
+  return json
+    .map((r): PlaceHit => {
+      const parts = r.display_name.split(", ");
+      const bb = r.boundingbox?.map(Number);
+      const lat = Number(r.lat);
+      const lng = Number(r.lon);
+      return {
+        name: parts[0],
+        detail: parts.slice(1).join(", "),
+        lat,
+        lng,
+        km: distanceKm(center, [lat, lng]),
+        bbox: bb && bb.length === 4 && bb.every(Number.isFinite) ? [bb[0], bb[2], bb[1], bb[3]] : undefined,
+      };
+    })
+    .filter((h) => Number.isFinite(h.lat) && Number.isFinite(h.lng))
+    .filter((h) => {
+      const key = `${h.lat.toFixed(3)},${h.lng.toFixed(3)}`; // drop near-identical duplicates
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => a.km - b.km)
+    .slice(0, 6);
+}
+
+// Gives FarmMap the Leaflet map, so a search can read where the camera is.
+function MapHandle({ mapRef }: { mapRef: React.MutableRefObject<L.Map | null> }) {
+  const map = useMap();
+  mapRef.current = map;
+  return null;
+}
+
+// Flies the map to a searched place whenever `target` changes.
+function FlyTo({ target }: { target: { hit: PlaceHit; nonce: number } | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!target) return;
+    const { hit } = target;
+    if (hit.bbox) {
+      const [s, w, n, e] = hit.bbox;
+      map.flyToBounds([[s, w], [n, e]], { maxZoom: 17, duration: 1.6 });
+    } else {
+      map.flyTo([hit.lat, hit.lng], 15, { duration: 1.6 });
+    }
+  }, [target, map]);
+  return null;
+}
+
 /* ---------- map layers ---------- */
 
 // Colour bar with numbers, shown over the map while a layer is selected.
@@ -724,63 +800,43 @@ function MapLegend({ layer }: { layer: MetricKey }) {
   );
 }
 
-// Day picker that floats over the map, with the colour scale of the selected layer under it.
+// Small card over the map: which day is shown, and a way to leave or open past data. The slider itself lives in the
+// Dashboard (so it never covers the reading tiles). The colour scale of the selected layer sits under the date.
 function MapTimeline({
   dates,
   day,
-  onDay,
   layer,
   monthly,
+  onPast,
 }: {
   dates: string[];
   day: number;
-  onDay: (i: number) => void;
   layer: MetricKey | null;
   monthly: boolean;
+  onPast: (open: boolean) => void;
 }) {
   const last = dates.length - 1;
   const idx = Math.min(day, last);
   const date = dates[idx];
-  const behind = Math.round(
-    (new Date(`${dates[last]}T00:00:00`).getTime() - new Date(`${date}T00:00:00`).getTime()) / 86400000,
-  );
+  const behind = last - idx;
   const sub = monthly
     ? "Monthly average"
-    : idx === last
+    : behind === 0
       ? "Latest data"
-      : Number.isFinite(behind)
-        ? `${behind} day${behind === 1 ? "" : "s"} before the latest`
-        : `Day ${idx + 1} of ${dates.length}`;
+      : `${behind} day${behind === 1 ? "" : "s"} before the latest`;
   return (
-    <div className="map-timeline" role="group" aria-label="Choose a day">
+    <div className="map-timeline" role="group" aria-label="Day shown">
       <div className="tl-head">
-        <button type="button" className="tl-step" aria-label="Previous day" disabled={idx <= 0} onClick={() => onDay(idx - 1)}>
-          ‹
-        </button>
-        <div className="tl-date" aria-live="polite">
+        <div className="tl-date tl-date-left" aria-live="polite">
           {shortDate(date)}
           <small>{sub}</small>
         </div>
-        {idx < last && (
-          <button type="button" className="tl-latest" onClick={() => onDay(last)}>
-            Latest
+        {last > 0 && (
+          <button type="button" className="tl-latest" onClick={() => onPast(behind === 0)}>
+            {behind === 0 ? "Past data" : "Latest"}
           </button>
         )}
-        <button type="button" className="tl-step" aria-label="Next day" disabled={idx >= last} onClick={() => onDay(idx + 1)}>
-          ›
-        </button>
       </div>
-      <input
-        className="tl-range"
-        type="range"
-        min={0}
-        max={last}
-        value={idx}
-        aria-label="Day"
-        aria-valuetext={shortDate(date)}
-        style={{ "--pct": `${(idx / (last || 1)) * 100}%` } as React.CSSProperties}
-        onChange={(e) => onDay(Number(e.target.value))}
-      />
       {layer && <MapLegend layer={layer} />}
     </div>
   );
@@ -1099,9 +1155,11 @@ function FitFarm({ points, nonce }: { points: LatLng[] | null; nonce: number }) 
   const map = useMap();
   useEffect(() => {
     if (nonce === 0 || !points) return;
+    // Same rule as the landscape-phone block in styles.css: the sheet becomes a panel on the left.
+    const panel = window.matchMedia("(orientation: landscape) and (max-height: 600px) and (max-width: 999px)").matches;
     map.fitBounds(L.latLngBounds(points), {
-      paddingTopLeft: [40, 100],
-      paddingBottomRight: [40, Math.round(window.innerHeight * 0.5)],
+      paddingTopLeft: panel ? [Math.min(window.innerWidth * 0.48, 440) + 40, 80] : [40, 100],
+      paddingBottomRight: panel ? [40, 40] : [40, Math.round(window.innerHeight * 0.5)],
       maxZoom: 17,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1182,70 +1240,265 @@ function Chart({
   );
 }
 
-// The label / value rows shown under "Farm details" in the Condition view.
-function farmDetailRows(farm: Farm, place: string | null): [string, string][] {
-  const d = farm.details;
-  const or = (v: string | undefined | null) => (v && v.trim() ? v.trim() : "Not provided");
-  const waterText: Record<Water, string> = {
-    rainfed: "Rain-fed",
-    irrigation: "Irrigation",
-    both: "Rain-fed and irrigation",
-  };
-  const unitLabel = YIELD_UNITS.find((u) => u.value === d?.yieldUnit)?.label ?? "tons";
-  const yieldText = d?.lastHarvestYield && /\d/.test(d.lastHarvestYield) ? `${d.lastHarvestYield} ${unitLabel}` : "Not provided";
-  const rows: [string, string][] = [
-    ["Location", or(farm.location || place)],
-    ["Farm size", `${polygonAreaHa(farm.points).toFixed(2)} ha`],
-  ];
+/* ---------- Farm details (the visual summary shown in the Condition view) ---------- */
 
-  if (farm.plots && farm.plots.length > 0) {
-    // New format: one group of rows per plot.
-    farm.plots.forEach((p, i) => {
-      const label = plotLabel(p, i);
-      rows.push([`${label}: area`, p.area && /\d/.test(p.area) ? `${p.area} ha` : "Not provided"]);
-      const r = latestRecord(p);
-      rows.push([`${label}: last crop`, or(r?.crop)]);
-      if (r) {
-        rows.push([`${label}: planted`, or(r.plantingDate ? formatDate(r.plantingDate) : null)]);
-        rows.push([`${label}: harvested`, or(r.harvestDate ? formatDate(r.harvestDate) : null)]);
-        rows.push([`${label}: harvest amount`, or(amountText(r))]);
-        rows.push([`${label}: performance`, r.performance ? PERFORMANCE_LABEL[r.performance] : "Not provided"]);
-      }
-      if (p.cropRecords.filter((x) => !recordBlank(x)).length > 1) {
-        rows.push([`${label}: crop records`, String(p.cropRecords.filter((x) => !recordBlank(x)).length)]);
-      }
-      rows.push([`${label}: soil texture`, or(p.soil.texture)]);
-      rows.push([
-        `${label}: soil moisture`,
-        p.soil.moisture === null
-          ? "Not provided"
-          : `${p.soil.moisture}% VWC${p.soil.depth ? ` at ${p.soil.depth} cm` : ""}${p.soil.source ? ` (${SOURCE_LABEL[p.soil.source]})` : ""}`,
-      ]);
-      rows.push([`${label}: soil test results`, p.soil.soilTest == null ? "Not provided" : p.soil.soilTest ? "Yes" : "No"]);
-    });
-    rows.push(["Water availability", d?.water ? waterText[d.water] : "Not provided"]);
-  } else {
-    // Farms saved before plots existed.
-    rows.push(
-      ["Last crop planted", or(d?.lastCrop)],
-      ["Last harvest yield", yieldText],
-      ["Harvest date", or(d?.harvestDate ? formatDate(d.harvestDate) : null)],
-      ["Water availability", d?.water ? waterText[d.water] : "Not provided"],
-    );
-  }
+const CROP_EMOJI: Record<string, string> = {
+  Rice: "🌾",
+  Corn: "🌽",
+  Onion: "🧅",
+  Garlic: "🧄",
+  "Mung beans": "🫘",
+  Vegetables: "🥬",
+};
+const PERF_LEVEL: Record<Performance, { level: number; color: string }> = {
+  good: { level: 4, color: "#2e9e5b" },
+  average: { level: 3, color: "#c9a824" },
+  poor: { level: 2, color: "#e0773a" },
+  failure: { level: 1, color: "#c0392b" },
+  unknown: { level: 0, color: "#9aa39a" },
+};
+const WATER_STEPS: { value: Water; label: string; icon: string }[] = [
+  { value: "rainfed", label: "Rain-fed", icon: "🌧️" },
+  { value: "both", label: "Both", icon: "🌦️" },
+  { value: "irrigation", label: "Irrigation", icon: "💧" },
+];
 
-  if (d?.water === "irrigation" || d?.water === "both") {
-    const source = IRRIGATION_SOURCES.find((o) => o.value === d.irrigationSource)?.label;
-    rows.push(["Irrigation water source", or(source)]);
-    if (d.irrigationSource === "government") {
-      rows.push(["Irrigation starts", or(d.irrigationStart ? formatDate(d.irrigationStart) : null)]);
-      rows.push(["Irrigation ends", or(d.irrigationEnd ? formatDate(d.irrigationEnd) : null)]);
-    }
-  }
-  if (!(farm.plots && farm.plots.length > 0)) {
-    rows.push(["Soil test results", d?.soilTest == null ? "Not provided" : d.soilTest ? "Yes" : "No"]);
-  }
-  return rows;
+const plotAreaHa = (p: Plot): number => {
+  const typed = parseFloat(p.area);
+  if (Number.isFinite(typed) && typed > 0) return typed;
+  return p.points && p.points.length >= 3 ? polygonAreaHa(p.points) : 0;
+};
+
+// Ring chart: how the farm is split between its plots.
+function PlotDonut({ slices, totalHa }: { slices: { color: string; ha: number }[]; totalHa: number }) {
+  const R = 40;
+  const C = 2 * Math.PI * R;
+  const sum = slices.reduce((s, x) => s + x.ha, 0) || 1;
+  let offset = 0;
+  return (
+    <svg viewBox="0 0 100 100" className="fd-donut" role="img" aria-label="Share of the farm taken by each plot">
+      <circle cx="50" cy="50" r={R} fill="none" stroke="#e3e9d2" strokeWidth="14" />
+      <g transform="rotate(-90 50 50)">
+        {slices.map((s, i) => {
+          const len = (s.ha / sum) * C;
+          const el = (
+            <circle
+              key={i}
+              cx="50"
+              cy="50"
+              r={R}
+              fill="none"
+              stroke={s.color}
+              strokeWidth="14"
+              strokeDasharray={`${Math.max(0, len - 1.5)} ${C}`}
+              strokeDashoffset={-offset}
+            />
+          );
+          offset += len;
+          return el;
+        })}
+      </g>
+      <text x="50" y="49" textAnchor="middle" className="fd-donut-num">
+        {formatHa(totalHa)}
+      </text>
+      <text x="50" y="62" textAnchor="middle" className="fd-donut-unit">
+        hectares
+      </text>
+    </svg>
+  );
+}
+
+function FarmSummary({
+  farm,
+  place,
+  onEdit,
+  onDelete,
+}: {
+  farm: Farm;
+  place: string | null;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const plots = normalizePlots(farm);
+  const sizeHa = polygonAreaHa(farm.points);
+  const location = (farm.location || place || "").trim();
+  const water = farm.details?.water ?? null;
+  const areas = plots.map(plotAreaHa);
+  const plotted = areas.reduce((s, a) => s + a, 0);
+  const slices = plots.map((_, i) => ({ color: PLOT_COLORS[i % PLOT_COLORS.length], ha: areas[i] })).filter((s) => s.ha > 0);
+  // Part of the farm not given to any plot (shown grey), when the plots add up to less than the farm.
+  const spare = sizeHa - plotted;
+  if (slices.length > 0 && spare > sizeHa * 0.03) slices.push({ color: "#cdd5bb", ha: spare });
+  const donutTotal = slices.length > 0 ? Math.max(sizeHa, plotted) : sizeHa;
+
+  return (
+    <div className="fd">
+      <div className="fd-hero">
+        <FarmThumb points={farm.points} />
+        <div className="fd-hero-text">
+          <div className="fd-title-row">
+            <h3>{farm.name}</h3>
+            <button type="button" className="fd-edit" onClick={onEdit}>
+              Edit
+            </button>
+          </div>
+          <p className="fd-loc">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" />
+              <circle cx="12" cy="9.5" r="2.4" />
+            </svg>
+            {location || "Locating…"}
+          </p>
+        </div>
+      </div>
+
+      <div className="fd-stats">
+        <div className="fd-stat">
+          <b>{formatHa(sizeHa)}</b>
+          <small>hectares</small>
+          <span>{Math.round(sizeHa * 10000).toLocaleString("en-US")} m²</span>
+        </div>
+        <div className="fd-stat">
+          <b>{plots.length}</b>
+          <small>{plots.length === 1 ? "plot" : "plots"}</small>
+          <span>{plots.reduce((n, p) => n + p.cropRecords.filter((r) => !recordBlank(r)).length, 0)} crop records</span>
+        </div>
+        <div className="fd-stat">
+          <b className="fd-stat-icon" aria-hidden="true">
+            {water ? WATER_STEPS.find((w) => w.value === water)?.icon : "–"}
+          </b>
+          <small>water</small>
+          <span>{water ? WATER_STEPS.find((w) => w.value === water)?.label : "Not provided"}</span>
+        </div>
+      </div>
+
+      <section className="fd-card" aria-label="Water availability">
+        <h4>Water availability</h4>
+        <div className="fd-water" role="img" aria-label={water ? `Water: ${WATER_STEPS.find((w) => w.value === water)?.label}` : "Water not provided"}>
+          {WATER_STEPS.map((w) => (
+            <div key={w.value} className={`fd-water-step ${water === w.value ? "on" : ""}`}>
+              <span aria-hidden="true">{w.icon}</span>
+              {w.label}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {slices.length > 0 && (
+        <section className="fd-card" aria-label="Land use">
+          <h4>How your land is split</h4>
+          <div className="fd-split">
+            <PlotDonut slices={slices} totalHa={donutTotal} />
+            <ul className="fd-legend">
+              {plots.map((p, i) =>
+                areas[i] > 0 ? (
+                  <li key={p.id}>
+                    <i style={{ background: PLOT_COLORS[i % PLOT_COLORS.length] }} aria-hidden="true" />
+                    <span>{plotLabel(p, i)}</span>
+                    <b>{formatHa(areas[i])} ha</b>
+                  </li>
+                ) : null,
+              )}
+              {slices.length > plots.filter((_, i) => areas[i] > 0).length && (
+                <li>
+                  <i style={{ background: "#cdd5bb" }} aria-hidden="true" />
+                  <span>Not in a plot</span>
+                  <b>{formatHa(spare)} ha</b>
+                </li>
+              )}
+            </ul>
+          </div>
+        </section>
+      )}
+
+      <h4 className="fd-heading">Your plots</h4>
+      {plots.map((p, i) => {
+        const rec = latestRecord(p);
+        const color = PLOT_COLORS[i % PLOT_COLORS.length];
+        const perf = rec?.performance ? PERF_LEVEL[rec.performance] : null;
+        const days =
+          rec?.plantingDate && rec.harvestDate
+            ? Math.round((new Date(`${rec.harvestDate}T00:00:00`).getTime() - new Date(`${rec.plantingDate}T00:00:00`).getTime()) / 86400000)
+            : null;
+        const share = sizeHa > 0 && areas[i] > 0 ? Math.min(100, (areas[i] / sizeHa) * 100) : null;
+        const records = p.cropRecords.filter((r) => !recordBlank(r)).length;
+        return (
+          <article className="fd-plot" key={p.id} style={{ "--plot": color } as React.CSSProperties}>
+            <header>
+              <h5>
+                <i aria-hidden="true" />
+                {plotLabel(p, i)}
+              </h5>
+              <span className="fd-plot-area">{areas[i] > 0 ? `${formatHa(areas[i])} ha` : "Area not given"}</span>
+            </header>
+            {share !== null && (
+              <div className="fd-share" title={`${share.toFixed(0)}% of the farm`}>
+                <div style={{ width: `${share}%` }} />
+              </div>
+            )}
+            {rec ? (
+              <>
+                <div className="fd-crop">
+                  <span className="fd-crop-emoji" aria-hidden="true">
+                    {CROP_EMOJI[rec.crop] ?? "🌱"}
+                  </span>
+                  <div>
+                    <b>{rec.crop || "Crop not given"}</b>
+                    <small>Last crop{records > 1 ? ` · ${records} records` : ""}</small>
+                  </div>
+                  <div className="fd-harvest">
+                    <b>{amountText(rec) ?? "–"}</b>
+                    <small>harvested</small>
+                  </div>
+                </div>
+                {(rec.plantingDate || rec.harvestDate) && (
+                  <div className="fd-timeline">
+                    <div className="fd-tl-dates">
+                      <span>
+                        <small>Planted</small>
+                        {rec.plantingDate ? shortDate(rec.plantingDate) : "–"}
+                      </span>
+                      {days !== null && days >= 0 && <em>{days} days</em>}
+                      <span>
+                        <small>Harvested</small>
+                        {rec.harvestDate ? shortDate(rec.harvestDate) : "–"}
+                      </span>
+                    </div>
+                    <div className="fd-tl-track" aria-hidden="true">
+                      <i />
+                      <b />
+                      <i />
+                    </div>
+                  </div>
+                )}
+                {rec.performance && perf && (
+                  <div className="fd-perf">
+                    <span>{PERFORMANCE_LABEL[rec.performance]}</span>
+                    <div className="fd-meter" aria-hidden="true">
+                      {[1, 2, 3, 4].map((n) => (
+                        <i key={n} style={n <= perf.level ? { background: perf.color } : undefined} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="fd-empty">No crop records yet.</p>
+            )}
+          </article>
+        );
+      })}
+
+      <section className="fd-card" aria-label="Harvest by season">
+        <h4>Harvest by season</h4>
+        <YieldChart farm={farm} />
+      </section>
+
+      <button type="button" className="farm-delete-btn" onClick={onDelete}>
+        Delete this farm
+      </button>
+    </div>
+  );
 }
 
 /* ---------- Dashboard extras: yield chart, commodities, farm carousel ---------- */
@@ -1499,11 +1752,6 @@ function RadioList<T extends string>({
   );
 }
 
-const YES_NO: { value: "yes" | "no"; label: string }[] = [
-  { value: "yes", label: "Yes" },
-  { value: "no", label: "No" },
-];
-
 function SetupForm({
   farm,
   place,
@@ -1587,7 +1835,6 @@ function SetupForm({
 
   const updatePlot = (patch: Partial<Plot>) =>
     setPlots((prev) => prev.map((p) => (p === plot ? { ...p, ...patch } : p)));
-  const updateSoil = (patch: Partial<SoilInfo>) => updatePlot({ soil: { ...plot.soil, ...patch } });
   // Crop records are listed together; each one says which plot it is from.
   const allRecords = plots.flatMap((p) => p.cropRecords.map((r) => ({ r, plotId: p.id })));
   const updateRecord = (id: string, patch: Partial<CropRecord>) =>
@@ -1635,15 +1882,12 @@ function SetupForm({
     { value: "irrigation", label: "Irrigation" },
     { value: "both", label: "Both" },
   ];
-  const usesIrrigation = d.water === "irrigation" || d.water === "both";
-  const isGovernment = usesIrrigation && d.irrigationSource === "government";
-  const datesBackwards = isGovernment && d.irrigationStart && d.irrigationEnd && d.irrigationEnd < d.irrigationStart;
 
   const plotsValid = plots.every(
     (p) => p.area !== "." && p.cropRecords.every((r) => r.amount !== "." && !recordError(r)),
   );
   const step1Valid = name.trim().length > 0 && plotsValid;
-  const canSave = step1Valid && !datesBackwards;
+  const canSave = step1Valid;
 
   function goToStep(next: 1 | 2) {
     setStep(next);
@@ -1655,9 +1899,10 @@ function SetupForm({
   function cleanedDetails(): FarmDetails {
     return {
       ...d,
-      irrigationSource: usesIrrigation ? d.irrigationSource : "",
-      irrigationStart: isGovernment ? d.irrigationStart : "",
-      irrigationEnd: isGovernment ? d.irrigationEnd : "",
+      // irrigation follow-up questions are no longer asked
+      irrigationSource: "",
+      irrigationStart: "",
+      irrigationEnd: "",
       // These old farm-level answers now live in each plot's crop records and soil answers.
       lastCrop: "",
       lastHarvestYield: "",
@@ -1890,6 +2135,7 @@ function SetupForm({
         </>
       ) : (
         <>
+          {plots.length > 1 && tabs}
           <div className="setup-card">
             <h3 className="setup-card-title">Your Previous Harvest</h3>
             <div className="setup-summary">
@@ -1913,80 +2159,6 @@ function SetupForm({
             </p>
           </div>
 
-          <h3 className="setup-heading">Soil Characteristics</h3>
-          {plots.length > 1 && tabs}
-
-          <label className="setup-field">
-            <span>What is your soil texture?</span>
-            <select value={plot.soil.texture} onChange={(e) => updateSoil({ texture: e.target.value })}>
-              <option value="">Select a texture</option>
-              {SOIL_TEXTURES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="setup-field">
-            <div className="setup-slider-head">
-              <label htmlFor="soil-moisture">Soil Moisture</label>
-              <small>Volumetric Water Content (VWC)</small>
-              <output htmlFor="soil-moisture" className={plot.soil.moisture === null ? "unset" : ""}>
-                {plot.soil.moisture === null ? "Not set" : `${plot.soil.moisture}%`}
-              </output>
-            </div>
-            <div className="setup-slider">
-              <input
-                id="soil-moisture"
-                type="range"
-                min={0}
-                max={MOISTURE_MAX}
-                step={1}
-                value={plot.soil.moisture ?? 15}
-                onChange={(e) => updateSoil({ moisture: Number(e.target.value) })}
-              />
-            </div>
-            <div className="setup-scale">
-              <span>0% - Dry</span>
-              {plot.soil.moisture !== null && (
-                <button type="button" className="setup-link" onClick={() => updateSoil({ moisture: null })}>
-                  Clear
-                </button>
-              )}
-              <span>{MOISTURE_MAX}% - High Reading</span>
-            </div>
-          </div>
-
-          <label className="setup-field">
-            <span>Measurement depth (cm)</span>
-            <input
-              value={plot.soil.depth}
-              onChange={(e) => updateSoil({ depth: sanitizeDecimal(e.target.value) })}
-              inputMode="decimal"
-              placeholder="e.g. 15"
-              autoComplete="off"
-            />
-          </label>
-
-          <RadioList
-            label="Where did the measurement come from?"
-            name={`source-${plot.id}`}
-            value={plot.soil.source}
-            options={SOIL_SOURCES}
-            onChange={(v) => updateSoil({ source: v })}
-          />
-
-          <h3 className="setup-heading">Soil Nutrient Assessment</h3>
-          <RadioList
-            row
-            label="Do you have soil test results?"
-            name={`soiltest-${plot.id}`}
-            value={plot.soil.soilTest === null ? "" : plot.soil.soilTest ? "yes" : "no"}
-            options={YES_NO}
-            onChange={(v) => updateSoil({ soilTest: v === "yes" })}
-          />
-
           <h3 className="setup-heading">Farming Conditions</h3>
           <div className="setup-choice">
             <span id="water-label">Water Availability</span>
@@ -2005,41 +2177,6 @@ function SetupForm({
             </div>
           </div>
 
-          {usesIrrigation && (
-            <label className="setup-field">
-              <span>For irrigation, what is your water source?</span>
-              <select
-                value={d.irrigationSource}
-                onChange={(e) => set("irrigationSource", e.target.value as IrrigationSource | "")}
-              >
-                <option value="">Select a source</option>
-                {IRRIGATION_SOURCES.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-
-          {isGovernment && (
-            <>
-              <label className="setup-field">
-                <span>When does irrigation start to be distributed?</span>
-                <input type="date" value={d.irrigationStart} onChange={(e) => set("irrigationStart", e.target.value)} />
-              </label>
-              <label className="setup-field">
-                <span>When does irrigation end?</span>
-                <input
-                  type="date"
-                  value={d.irrigationEnd}
-                  min={d.irrigationStart || undefined}
-                  onChange={(e) => set("irrigationEnd", e.target.value)}
-                />
-              </label>
-              {datesBackwards && <p className="setup-error">The end date must be on or after the start date.</p>}
-            </>
-          )}
         </>
       )}
 
@@ -2123,6 +2260,20 @@ function useWide() {
   return wide;
 }
 
+// True on tablet-sized and bigger windows (700px+), where the reading tiles fit beside a half-open sheet.
+const MID_QUERY = "(min-width: 700px)";
+function useMid() {
+  const [mid, setMid] = useState(() => window.matchMedia(MID_QUERY).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(MID_QUERY);
+    const update = () => setMid(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return mid;
+}
+
 export function FarmMap() {
   // Farms saved on earlier visits (empty the first time).
   const [initial] = useState(loadStore);
@@ -2155,8 +2306,19 @@ export function FarmMap() {
   // peek = just the "CONDITION" bar, half = partly open, full = covers the whole screen
   const [sheet, setSheet] = useState<"peek" | "half" | "full">("peek");
   const wide = useWide();
+  const mid = useMid();
   // the slide-out menu on the left
   const [menuOpen, setMenuOpen] = useState(false);
+  // place search in the top bar
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<PlaceHit[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchNote, setSearchNote] = useState<string | null>(null); // "No places found" or an error
+  const [flyTarget, setFlyTarget] = useState<{ hit: PlaceHit; nonce: number } | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const searchAbort = useRef<AbortController | null>(null);
+  const mapRef = useRef<L.Map | null>(null);
   // what the bottom sheet shows: the Dashboard, the detailed Condition view, the My Farms screen,
   // the Set up farm form (opens right after a new outline is finished), or the Plan next season screen
   const [sheetView, setSheetView] = useState<"dashboard" | "condition" | "farms" | "setup" | "plan">("dashboard");
@@ -2187,7 +2349,8 @@ export function FarmMap() {
   const [metas, setMetas] = useState<Partial<Record<MetricKey, GridMeta>>>({});
   const [heatBounds, setHeatBounds] = useState<Partial<Record<MetricKey, Bounds>>>({});
 
-  const [day, setDay] = useState<number>(0); // index into dates
+  const [day, setDay] = useState<number>(0); // index into dates (kept on the latest day unless the farmer browses past data)
+  const [pastMode, setPastMode] = useState(false); // the farmer asked to browse past days
   const [grid, setGrid] = useState<{ layer: MetricKey; points: GridPoint[] } | null>(null);
   const [imageDate, setImageDate] = useState<string | null>(null); // the day whose image we actually request
   const [gridError, setGridError] = useState<string | null>(null);
@@ -2207,6 +2370,11 @@ export function FarmMap() {
   const firstMeta = METRICS.map((m) => metas[m.key]).find((m) => m !== undefined);
   const dates = firstMeta ? firstMeta.dates : null;
   const date = dates ? dates[Math.min(day, dates.length - 1)] : null;
+
+  // Start on the latest day, and go back to it whenever the farmer is not browsing past data.
+  useEffect(() => {
+    if (dates && !pastMode) setDay(dates.length - 1);
+  }, [dates?.length, pastMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The farm's data and the map layer share the slider, matched by date (not array position).
   const polyIndex = data && date ? data.findIndex((d) => d.date === date) : -1;
@@ -2358,9 +2526,88 @@ export function FarmMap() {
     return () => controller.abort();
   }, [poly]);
 
+  // Focus the search box when it opens.
+  useEffect(() => {
+    if (searchOpen) searchRef.current?.focus();
+  }, [searchOpen]);
+
+  // Suggestions appear a moment after the person stops typing (Nominatim asks for gentle use).
+  useEffect(() => {
+    const q = query.trim();
+    if (!searchOpen || q.length < 3) {
+      searchAbort.current?.abort();
+      setHits([]);
+      setSearchNote(null);
+      setSearching(false);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      void lookup(q);
+    }, 700);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, searchOpen]);
+
+  async function lookup(q: string): Promise<PlaceHit[]> {
+    searchAbort.current?.abort();
+    const controller = new AbortController();
+    searchAbort.current = controller;
+    setSearching(true);
+    setSearchNote(null);
+    try {
+      const found = await searchPlaces(q, mapRef.current, controller.signal);
+      if (controller.signal.aborted) return [];
+      setHits(found);
+      setSearchNote(found.length === 0 ? "No places found. Try another name." : null);
+      return found;
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") {
+        setHits([]);
+        setSearchNote("Couldn't search right now. Check your connection and try again.");
+      }
+      return [];
+    } finally {
+      if (!controller.signal.aborted) setSearching(false);
+    }
+  }
+
+  function closeSearch() {
+    searchAbort.current?.abort();
+    setSearchOpen(false);
+    setQuery("");
+    setHits([]);
+    setSearchNote(null);
+    setSearching(false);
+  }
+
+  // Teleport: fly the map to the place and collapse the bottom sheet so the map is visible.
+  function goToPlace(hit: PlaceHit) {
+    setFlyTarget((prev) => ({ hit, nonce: (prev?.nonce ?? 0) + 1 }));
+    setSelectedPlotId(null);
+    setSheet("peek");
+    closeSearch();
+  }
+
+  // Enter (or the magnifier) goes straight to the nearest match.
+  async function submitSearch() {
+    const q = query.trim();
+    if (!q) return;
+    const found = await lookup(q);
+    if (found[0]) goToPlace(found[0]);
+  }
+
   // Show a saved farm on the map.
+  // Browse past days (opens the Dashboard, where the slider is) or go back to the latest day.
+  function openPast(open: boolean) {
+    setPastMode(open);
+    if (!open) return;
+    setSheetView("dashboard");
+    setSheet((s) => (s === "peek" ? "half" : s));
+  }
+
   function selectFarm(f: Farm) {
     setSelectedPlotId(null);
+    setPastMode(false);
     setMenuOpen(false);
     setWelcome(false);
     setDrawing(false);
@@ -2607,10 +2854,10 @@ export function FarmMap() {
   const farmDrawBar = drawing && !poly.closed && !plotDraw;
   // Readings sit on the map while the sheet is collapsed; when the sheet is open the dashboard shows them.
   // On a wide window or landscape phone the sheet leaves room beside it, so they stay on the map in every state.
-  const showConditions = poly.closed && !!activeFarm && (sheet === "peek" || wide) && sheetView !== "setup" && sheetView !== "plan" && !plotDraw && !farmDrawBar;
+  const showConditions = poly.closed && !!activeFarm && (sheet === "peek" || wide || (mid && sheet === "half")) && sheetView !== "setup" && sheetView !== "plan" && !plotDraw && !farmDrawBar;
   // The day picker (with the legend of the selected layer) floats above the sheet.
   const showTimeline =
-    !!dates && !!date && (poly.closed || !!dataLayer) && !plotDraw && !farmDrawBar && !(selectedPlot && sheetView !== "setup");
+    !!dates && !!date && (pastMode || !!dataLayer) && !plotDraw && !farmDrawBar && !(selectedPlot && sheetView !== "setup");
   useEffect(() => {
     if (!showConditions) setOpenMetric(null);
   }, [showConditions]);
@@ -2635,6 +2882,13 @@ export function FarmMap() {
   const sheetTitle =
     sheetView === "farms" ? "MY FARMS" : sheetView === "setup" ? "SET UP FARM" : sheetView === "plan" ? "PLAN NEXT SEASON" : sheetView === "dashboard" ? "DASHBOARD" : (activeFarm?.name ?? "Condition").toUpperCase();
   const viewClass = sheetView === "condition" ? "" : sheetView === "setup" ? "setup" : "banner";
+  // True whenever the app is waiting on something: the farm's numbers, a map layer, a place search, the water check.
+  const busy =
+    loading ||
+    searching ||
+    checkingArea ||
+    (!!dataLayer && (layerBusy || !bounds) && !gridError) ||
+    (Object.keys(metas).length === 0 && !gridError);
   const heatUrl = dataLayer && imageDate ? heatmapUrl(dataLayer, imageDate) : null;
   const bounds = dataLayer ? heatBounds[dataLayer] : undefined;
 
@@ -2705,9 +2959,15 @@ export function FarmMap() {
           />
         )}
         <FitFarm points={activeFarm?.points ?? null} nonce={fitNonce} />
+        <MapHandle mapRef={mapRef} />
+        <FlyTo target={flyTarget} />
       </MapContainer>
 
+      {/* loading bar: runs along the top edge while the app is working */}
+      {busy && <div className="busy-bar" role="progressbar" aria-label="Loading" aria-busy="true" />}
+
       {/* top bar */}
+      {searchOpen && <div className="search-scrim" onClick={closeSearch} aria-hidden="true" />}
       <div className="topbar">
         <button
           className="menu-btn"
@@ -2717,13 +2977,114 @@ export function FarmMap() {
         >
           <span /><span /><span />
         </button>
-        <div className="place-pill">
-          <span className="place-text">{pillText}</span>
-          <button className="add-btn" aria-label="Add a new farm" onClick={startNewFarm}>+</button>
+        <div
+          className={`place-pill ${searchOpen ? "searching" : ""}`}
+          onClick={(e) => {
+            // a tap anywhere on the bar (not on one of its buttons) opens the search, or focuses the box
+            if ((e.target as HTMLElement).closest("button")) return;
+            if (!searchOpen) setSearchOpen(true);
+            else searchRef.current?.focus();
+          }}
+        >
+          {searchOpen ? (
+            <form
+              className="search-form"
+              role="search"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void submitSearch();
+              }}
+            >
+              <input
+                ref={searchRef}
+                className="search-input"
+                type="search"
+                value={query}
+                placeholder="Search for a place"
+                aria-label="Search for a place"
+                autoComplete="off"
+                enterKeyHint="search"
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") closeSearch();
+                }}
+              />
+            </form>
+          ) : (
+            <span className="place-text">{pillText}</span>
+          )}
+          {searchOpen && (
+            <button type="button" className="search-close" aria-label="Close search" onClick={closeSearch}>
+              ×
+            </button>
+          )}
+          <button
+            type="button"
+            className="search-btn"
+            aria-label={searchOpen ? "Search" : "Search for a place"}
+            onClick={() => {
+              if (!searchOpen) setSearchOpen(true);
+              else if (query.trim()) void submitSearch();
+              else closeSearch();
+            }}
+          >
+            {searching ? (
+              <span className="search-spin" aria-hidden="true" />
+            ) : (
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="6.5" />
+                <path d="M20 20l-4.2-4.2" />
+              </svg>
+            )}
+          </button>
+
+          {searchOpen && (searching || hits.length > 0 || searchNote) && (
+            <div className="search-panel">
+              {hits.length > 0 && <div className="search-head">Closest to the map first</div>}
+              <ul className="search-results" role="listbox" aria-label="Search results">
+                {searching && hits.length === 0 && (
+                <li className="search-note">
+                  <span className="spinner" aria-hidden="true" />
+                  Searching…
+                </li>
+              )}
+                {searchNote && <li className="search-note">{searchNote}</li>}
+                {hits.map((h, i) => (
+                  <li key={`${h.lat},${h.lng},${i}`} role="option" aria-selected="false">
+                    <button type="button" className="search-hit" onClick={() => goToPlace(h)}>
+                      <span className="search-hit-pin" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" />
+                          <circle cx="12" cy="9.5" r="2.4" />
+                        </svg>
+                      </span>
+                      <span className="search-hit-text">
+                        <b>{h.name}</b>
+                        {h.detail && <small>{h.detail}</small>}
+                      </span>
+                      <span className="search-hit-dist">{formatDistance(h.km)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       </div>
 
-      {poly.closed && activeFarm && <div className="farm-label">{activeFarm.name}</div>}
+      {poly.closed && activeFarm && (
+        <div className="farm-label">
+          <span className="farm-label-chip">
+            <span className="farm-label-pin" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" />
+                <circle cx="12" cy="9.5" r="2.4" />
+              </svg>
+            </span>
+            <span className="farm-label-name">{activeFarm.name}</span>
+          </span>
+        </div>
+      )}
 
       {/* checking / water warning */}
       {checkingArea && (
@@ -2807,9 +3168,9 @@ export function FarmMap() {
         <MapTimeline
           dates={dates}
           day={day}
-          onDay={setDay}
           layer={dataLayer}
           monthly={!!dataLayer && metas[dataLayer]?.period === "month"}
+          onPast={openPast}
         />
       )}
 
@@ -3052,6 +3413,46 @@ export function FarmMap() {
                     </p>
                   )}
 
+                  {dates && dates.length > 1 && (() => {
+                    const lastI = dates.length - 1;
+                    const i = Math.min(day, lastI);
+                    const behind = lastI - i;
+                    return pastMode ? (
+                      <div className="dash-picker" role="group" aria-label="Choose a day">
+                        <div className="dp-head">
+                          <button type="button" className="dp-step" aria-label="Previous day" disabled={i <= 0} onClick={() => setDay(i - 1)}>
+                            ‹
+                          </button>
+                          <div className="dp-date" aria-live="polite">
+                            {shortDate(dates[i])}
+                            <small>{behind === 0 ? "Latest data" : `${behind} day${behind === 1 ? "" : "s"} before the latest`}</small>
+                          </div>
+                          <button type="button" className="dp-step" aria-label="Next day" disabled={i >= lastI} onClick={() => setDay(i + 1)}>
+                            ›
+                          </button>
+                        </div>
+                        <input
+                          className="tl-range dp-range"
+                          type="range"
+                          min={0}
+                          max={lastI}
+                          value={i}
+                          aria-label="Day"
+                          aria-valuetext={shortDate(dates[i])}
+                          style={{ "--pct": `${(i / (lastI || 1)) * 100}%` } as React.CSSProperties}
+                          onChange={(e) => setDay(Number(e.target.value))}
+                        />
+                        <button type="button" className="dash-past" onClick={() => setPastMode(false)}>
+                          Back to latest data
+                        </button>
+                      </div>
+                    ) : (
+                      <button type="button" className="dash-past" onClick={() => openPast(true)}>
+                        View past data
+                      </button>
+                    );
+                  })()}
+
                   <button className="dash-details" onClick={() => setSheetView("condition")}>
                     See details
                   </button>
@@ -3061,7 +3462,13 @@ export function FarmMap() {
                     </button>
                   )}
                   {activeFarm && poly.closed && (
-                    <button className="dash-details plan-entry" onClick={() => { setSheetView("plan"); setSheet("full"); }}>
+                    <button className="dash-details plan-cta" onClick={() => { setSheetView("plan"); setSheet("full"); }}>
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M7 20h10" />
+                        <path d="M10 20c5.5-2.5.8-6.4 3-10" />
+                        <path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z" />
+                        <path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z" />
+                      </svg>
                       Plan next season
                     </button>
                   )}
@@ -3093,17 +3500,33 @@ export function FarmMap() {
           ) : sheetView === "farms" ? (
             <div className="farm-grid">
               {farms.length === 0 && (
-                <p className="hint">No farms yet. Tap + at the top, or open the menu, to add one.</p>
+                <p className="hint">No farms yet. Open the menu to add one.</p>
               )}
               {farms.map((f) => (
-                <button
-                  key={f.id}
-                  className={`farm-card ${f.id === activeId ? "active" : ""}`}
-                  onClick={() => selectFarm(f)}
-                >
-                  <FarmThumb points={f.points} />
-                  <span className="farm-card-name">{f.name}</span>
-                </button>
+                <div className="farm-card-wrap" key={f.id}>
+                  <button
+                    className={`farm-card ${f.id === activeId ? "active" : ""}`}
+                    onClick={() => selectFarm(f)}
+                  >
+                    <FarmThumb points={f.points} />
+                    <span className="farm-card-name">{f.name}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="farm-card-delete"
+                    aria-label={`Delete ${f.name}`}
+                    title="Delete this farm"
+                    onClick={() => deleteFarm(f.id)}
+                  >
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M4 7h16" />
+                      <path d="M10 11v6" />
+                      <path d="M14 11v6" />
+                      <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" />
+                      <path d="M9 7V4h6v3" />
+                    </svg>
+                  </button>
+                </div>
               ))}
             </div>
           ) : (
@@ -3112,23 +3535,7 @@ export function FarmMap() {
             ‹ Back to dashboard
           </button>
           {activeFarm && poly.closed && (
-            <div className="card farm-info">
-              <div className="farm-info-head">
-                <h3>Farm details</h3>
-                <button className="setup-link" onClick={openEditDetails}>
-                  Edit
-                </button>
-              </div>
-              {farmDetailRows(activeFarm, place).map(([label, value], i) => (
-                <div className="row" key={`${i}-${label}`}>
-                  <span>{label}</span>
-                  <b>{value}</b>
-                </div>
-              ))}
-              <button type="button" className="farm-delete-btn" onClick={() => deleteFarm(activeFarm.id)}>
-                Delete this farm
-              </button>
-            </div>
+            <FarmSummary farm={activeFarm} place={place} onEdit={openEditDetails} onDelete={() => deleteFarm(activeFarm.id)} />
           )}
           {gridError && <DataNotice message={friendlyError(gridError)} onRetry={retryLayers} />}
 
