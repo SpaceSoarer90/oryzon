@@ -1,0 +1,905 @@
+FAIL a1 2017: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review th
+FAIL a1 2020: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review th
+FAIL a1 2018: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review th
+FAIL a1 2019: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review th
+FAIL a1 2016: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review th
+FAIL a2 2017: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review th
+FAIL a2 2018: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review th
+FAIL a2 2016: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review th
+FAIL a2 2019: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review th
+FAIL a2 2020: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review th
+FAIL a1 2021: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review th
+FAIL a1 2022: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review th
+FAIL a1 2023: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review th
+FAIL a1 2025: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review th
+FAIL a1 2024: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review th
+FAIL a2 2021: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review th
+FAIL a2 2025: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review th
+FAIL a2 2022: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review th
+FAIL a2 2023: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review th
+FAIL a2 2024: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review th
+DONE fails=['FAIL 2016', 'FAIL 2017', 'FAIL 2018', 'FAIL 2019', 'FAIL 2020', 'FAIL 2021', 'FAIL 2022', 'FAIL 2023', 'FAIL 2024', 'FAIL 2025']
+FAIL a1 2019 4.5/116.0: IndexError
+FAIL a1 2016 4.5/116.0: IndexError
+FAIL a1 2017 4.5/116.0: IndexError
+FAIL a1 2018 4.5/116.0: IndexError
+FAIL a1 2020 4.5/116.0: IndexError
+FAIL a2 2019 4.5/116.0: IndexError
+FAIL a2 2018 4.5/116.0: IndexError
+FAIL a2 2020 4.5/116.0: IndexError
+FAIL a2 2016 4.5/116.0: IndexError
+FAIL a3 2019 4.5/116.0: IndexError
+FAIL a3 2018 4.5/116.0: IndexError
+FAIL a2 2017 4.5/116.0: IndexError
+FAIL a3 2020 4.5/116.0: IndexError
+FAIL a3 2016 4.5/116.0: IndexError
+FAIL a1 2021 4.5/116.0: IndexError
+FAIL a1 2022 4.5/116.0: IndexError
+FAIL a1 2023 4.5/116.0: IndexError
+FAIL a3 2017 4.5/116.0: IndexError
+FAIL a2 2021 4.5/116.0: IndexError
+FAIL a2 2022 4.5/116.0: IndexError
+FAIL a2 2023 4.5/116.0: IndexError
+FAIL a1 2024 4.5/116.0: IndexError
+FAIL a1 2025 4.5/116.0: IndexError
+FAIL a3 2021 4.5/116.0: IndexError
+FAIL a3 2022 4.5/116.0: IndexError
+FAIL a3 2023 4.5/116.0: IndexError
+FAIL a2 2025 4.5/116.0: IndexError
+FAIL a1 2016 4.5/124.0: IndexError
+FAIL a1 2017 4.5/124.0: IndexError
+FAIL a1 2018 4.5/124.0: IndexError
+FAIL a2 2024 4.5/116.0: IndexError
+FAIL a3 2025 4.5/116.0: IndexError
+FAIL a2 2016 4.5/124.0: IndexError
+FAIL a2 2017 4.5/124.0: IndexError
+FAIL a2 2018 4.5/124.0: IndexError
+FAIL a1 2019 4.5/124.0: IndexError
+FAIL a3 2024 4.5/116.0: IndexError
+FAIL a3 2016 4.5/124.0: IndexError
+FAIL a3 2017 4.5/124.0: IndexError
+FAIL a3 2018 4.5/124.0: IndexError
+FAIL a2 2019 4.5/124.0: IndexError
+FAIL a1 2020 4.5/124.0: IndexError
+FAIL a1 2021 4.5/124.0: IndexError
+FAIL a1 2022 4.5/124.0: IndexError
+FAIL a1 2023 4.5/124.0: IndexError
+FAIL a3 2019 4.5/124.0: IndexError
+FAIL a2 2020 4.5/124.0: IndexError
+FAIL a2 2021 4.5/124.0: IndexError
+FAIL a2 2022 4.5/124.0: IndexError
+FAIL a2 2023 4.5/124.0: IndexError
+FAIL a1 2024 4.5/124.0: IndexError
+FAIL a3 2020 4.5/124.0: IndexError
+FAIL a3 2021 4.5/124.0: IndexError
+FAIL a3 2022 4.5/124.0: IndexError
+FAIL a3 2023 4.5/124.0: IndexError
+FAIL a1 2025 4.5/124.0: IndexError
+FAIL a2 2024 4.5/124.0: IndexError
+FAIL a1 2016 12.5/116.0: IndexError
+FAIL a1 2017 12.5/116.0: IndexError
+FAIL a3 2024 4.5/124.0: IndexError
+FAIL a1 2018 12.5/116.0: IndexError
+FAIL a2 2025 4.5/124.0: IndexError
+FAIL a2 2016 12.5/116.0: IndexError
+FAIL a2 2017 12.5/116.0: IndexError
+FAIL a2 2018 12.5/116.0: IndexError
+FAIL a1 2019 12.5/116.0: IndexError
+FAIL a3 2025 4.5/124.0: IndexError
+FAIL a3 2017 12.5/116.0: IndexError
+FAIL a2 2019 12.5/116.0: IndexError
+FAIL a3 2016 12.5/116.0: IndexError
+FAIL a1 2021 12.5/116.0: IndexError
+FAIL a3 2018 12.5/116.0: IndexError
+FAIL a3 2019 12.5/116.0: IndexError
+FAIL a1 2020 12.5/116.0: IndexError
+FAIL a2 2021 12.5/116.0: IndexError
+FAIL a1 2022 12.5/116.0: IndexError
+FAIL a2 2020 12.5/116.0: IndexError
+FAIL a1 2024 12.5/116.0: IndexError
+FAIL a1 2023 12.5/116.0: IndexError
+FAIL a3 2021 12.5/116.0: IndexError
+FAIL a2 2022 12.5/116.0: IndexError
+FAIL a2 2024 12.5/116.0: IndexError
+FAIL a3 2020 12.5/116.0: IndexError
+FAIL a2 2023 12.5/116.0: IndexError
+FAIL a1 2025 12.5/116.0: IndexError
+FAIL a3 2022 12.5/116.0: IndexError
+FAIL a1 2016 12.5/124.0: IndexError
+FAIL a3 2023 12.5/116.0: IndexError
+FAIL a3 2024 12.5/116.0: IndexError
+FAIL a1 2017 12.5/124.0: IndexError
+FAIL a2 2025 12.5/116.0: IndexError
+FAIL a2 2016 12.5/124.0: IndexError
+FAIL a1 2019 12.5/124.0: IndexError
+FAIL a3 2025 12.5/116.0: IndexError
+FAIL a3 2016 12.5/124.0: IndexError
+FAIL a2 2019 12.5/124.0: IndexError
+FAIL a2 2017 12.5/124.0: IndexError
+FAIL a1 2018 12.5/124.0: IndexError
+FAIL a1 2020 12.5/124.0: IndexError
+FAIL a3 2019 12.5/124.0: IndexError
+FAIL a1 2021 12.5/124.0: IndexError
+FAIL a3 2017 12.5/124.0: IndexError
+FAIL a2 2020 12.5/124.0: IndexError
+FAIL a2 2018 12.5/124.0: IndexError
+FAIL a1 2022 12.5/124.0: IndexError
+FAIL a2 2021 12.5/124.0: IndexError
+FAIL a1 2023 12.5/124.0: IndexError
+FAIL a3 2018 12.5/124.0: IndexError
+FAIL a3 2020 12.5/124.0: IndexError
+FAIL a2 2022 12.5/124.0: IndexError
+FAIL a3 2021 12.5/124.0: IndexError
+FAIL a2 2023 12.5/124.0: IndexError
+FAIL a1 2024 12.5/124.0: IndexError
+FAIL a1 2025 12.5/124.0: IndexError
+FAIL a3 2022 12.5/124.0: IndexError
+FAIL a1 2016 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2023 12.5/124.0: IndexError
+FAIL a1 2017 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a2 2024 12.5/124.0: IndexError
+FAIL a2 2025 12.5/124.0: IndexError
+FAIL a2 2016 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a1 2018 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2025 12.5/124.0: IndexError
+FAIL a3 2024 12.5/124.0: IndexError
+FAIL a2 2017 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2016 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a2 2018 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a1 2019 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a1 2020 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a1 2021 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2017 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2018 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a2 2019 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a2 2021 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a1 2022 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a2 2020 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a1 2023 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2019 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a2 2022 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2021 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2020 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a2 2023 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a1 2024 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2022 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a1 2025 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a1 2016 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2023 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a2 2024 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a1 2017 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a2 2025 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a2 2016 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a1 2018 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2024 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a2 2017 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2016 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a2 2018 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a1 2019 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2017 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2025 20.0/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a1 2020 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2018 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a2 2019 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a1 2021 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a1 2022 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a2 2020 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a1 2023 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2019 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a2 2021 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a2 2022 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2020 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a2 2023 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a1 2024 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2021 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2023 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a1 2025 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2022 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a2 2024 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a2 2025 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2024 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+FAIL a3 2025 20.0/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and t
+DONE total=60 fails=60: ['FAIL 2016 4.5/116.0', 'FAIL 2017 4.5/116.0', 'FAIL 2018 4.5/116.0', 'FAIL 2019 4.5/116.0', 'FAIL 2020 4.5/116.0']
+FAIL a1 2020 4.5/116.0: IndexError
+FAIL a1 2019 4.5/116.0: IndexError
+FAIL a1 2018 4.5/116.0: IndexError
+FAIL a1 2016 4.5/116.0: IndexError
+FAIL a1 2017 4.5/116.0: IndexError
+FAIL a2 2020 4.5/116.0: IndexError
+FAIL a2 2016 4.5/116.0: IndexError
+FAIL a2 2019 4.5/116.0: IndexError
+FAIL a2 2017 4.5/116.0: IndexError
+FAIL a2 2018 4.5/116.0: IndexError
+FAIL a3 2020 4.5/116.0: IndexError
+FAIL a3 2016 4.5/116.0: IndexError
+FAIL a3 2017 4.5/116.0: IndexError
+FAIL a3 2019 4.5/116.0: IndexError
+FAIL a3 2018 4.5/116.0: IndexError
+-- progress 0/150
+FAIL a1 2023 4.5/116.0: IndexError
+FAIL a1 2022 4.5/116.0: IndexError
+FAIL a1 2021 4.5/116.0: IndexError
+FAIL a1 2025 4.5/116.0: IndexError
+FAIL a1 2024 4.5/116.0: IndexError
+FAIL a2 2021 4.5/116.0: IndexError
+FAIL a2 2023 4.5/116.0: IndexError
+FAIL a2 2022 4.5/116.0: IndexError
+FAIL a2 2025 4.5/116.0: IndexError
+FAIL a2 2024 4.5/116.0: IndexError
+FAIL a3 2022 4.5/116.0: IndexError
+FAIL a3 2021 4.5/116.0: IndexError
+FAIL a3 2023 4.5/116.0: IndexError
+FAIL a3 2025 4.5/116.0: IndexError
+FAIL a3 2024 4.5/116.0: IndexError
+FAIL a1 2016 4.5/120.0: IndexError
+FAIL a1 2017 4.5/120.0: IndexError
+FAIL a1 2020 4.5/120.0: IndexError
+FAIL a1 2018 4.5/120.0: IndexError
+FAIL a1 2019 4.5/120.0: IndexError
+FAIL a2 2016 4.5/120.0: IndexError
+FAIL a2 2017 4.5/120.0: IndexError
+FAIL a2 2020 4.5/120.0: IndexError
+FAIL a2 2018 4.5/120.0: IndexError
+FAIL a2 2019 4.5/120.0: IndexError
+FAIL a3 2016 4.5/120.0: IndexError
+FAIL a3 2017 4.5/120.0: IndexError
+FAIL a3 2018 4.5/120.0: IndexError
+FAIL a3 2020 4.5/120.0: IndexError
+FAIL a3 2019 4.5/120.0: IndexError
+FAIL a1 2022 4.5/120.0: IndexError
+FAIL a1 2021 4.5/120.0: IndexError
+FAIL a1 2024 4.5/120.0: IndexError
+FAIL a1 2023 4.5/120.0: IndexError
+FAIL a1 2025 4.5/120.0: IndexError
+FAIL a2 2022 4.5/120.0: IndexError
+FAIL a2 2021 4.5/120.0: IndexError
+FAIL a2 2024 4.5/120.0: IndexError
+FAIL a2 2023 4.5/120.0: IndexError
+FAIL a2 2025 4.5/120.0: IndexError
+FAIL a3 2022 4.5/120.0: IndexError
+FAIL a3 2021 4.5/120.0: IndexError
+FAIL a3 2024 4.5/120.0: IndexError
+FAIL a3 2023 4.5/120.0: IndexError
+FAIL a3 2025 4.5/120.0: IndexError
+FAIL a1 2020 4.5/124.0: IndexError
+FAIL a1 2017 4.5/124.0: IndexError
+FAIL a1 2016 4.5/124.0: IndexError
+FAIL a1 2018 4.5/124.0: IndexError
+FAIL a1 2019 4.5/124.0: IndexError
+FAIL a2 2020 4.5/124.0: IndexError
+FAIL a2 2016 4.5/124.0: IndexError
+FAIL a2 2017 4.5/124.0: IndexError
+FAIL a2 2019 4.5/124.0: IndexError
+FAIL a2 2018 4.5/124.0: IndexError
+FAIL a3 2020 4.5/124.0: IndexError
+FAIL a3 2016 4.5/124.0: IndexError
+FAIL a3 2017 4.5/124.0: IndexError
+FAIL a3 2019 4.5/124.0: IndexError
+FAIL a3 2018 4.5/124.0: IndexError
+FAIL a1 2021 4.5/124.0: IndexError
+FAIL a1 2022 4.5/124.0: IndexError
+FAIL a1 2023 4.5/124.0: IndexError
+FAIL a1 2024 4.5/124.0: IndexError
+FAIL a1 2025 4.5/124.0: IndexError
+FAIL a2 2021 4.5/124.0: IndexError
+FAIL a2 2022 4.5/124.0: IndexError
+FAIL a2 2023 4.5/124.0: IndexError
+FAIL a2 2024 4.5/124.0: IndexError
+FAIL a2 2025 4.5/124.0: IndexError
+FAIL a3 2021 4.5/124.0: IndexError
+FAIL a3 2022 4.5/124.0: IndexError
+FAIL a3 2023 4.5/124.0: IndexError
+FAIL a3 2025 4.5/124.0: IndexError
+FAIL a3 2024 4.5/124.0: IndexError
+FAIL a1 2016 8.5/116.0: IndexError
+FAIL a1 2017 8.5/116.0: IndexError
+FAIL a1 2018 8.5/116.0: IndexError
+FAIL a1 2019 8.5/116.0: IndexError
+FAIL a1 2020 8.5/116.0: IndexError
+FAIL a2 2016 8.5/116.0: IndexError
+FAIL a2 2017 8.5/116.0: IndexError
+FAIL a2 2018 8.5/116.0: IndexError
+FAIL a2 2019 8.5/116.0: IndexError
+FAIL a2 2020 8.5/116.0: IndexError
+FAIL a3 2016 8.5/116.0: IndexError
+FAIL a3 2017 8.5/116.0: IndexError
+-- progress 30/150
+FAIL a3 2018 8.5/116.0: IndexError
+FAIL a3 2019 8.5/116.0: IndexError
+FAIL a3 2020 8.5/116.0: IndexError
+FAIL a1 2021 8.5/116.0: IndexError
+FAIL a1 2022 8.5/116.0: IndexError
+FAIL a1 2024 8.5/116.0: IndexError
+FAIL a1 2023 8.5/116.0: IndexError
+FAIL a2 2021 8.5/116.0: IndexError
+FAIL a2 2022 8.5/116.0: IndexError
+FAIL a1 2025 8.5/116.0: IndexError
+FAIL a2 2023 8.5/116.0: IndexError
+FAIL a3 2021 8.5/116.0: IndexError
+FAIL a3 2022 8.5/116.0: IndexError
+FAIL a2 2025 8.5/116.0: IndexError
+FAIL a3 2023 8.5/116.0: IndexError
+FAIL a1 2016 8.5/120.0: IndexError
+FAIL a2 2024 8.5/116.0: IndexError
+FAIL a1 2017 8.5/120.0: IndexError
+FAIL a3 2025 8.5/116.0: IndexError
+FAIL a1 2018 8.5/120.0: IndexError
+FAIL a2 2016 8.5/120.0: IndexError
+FAIL a2 2017 8.5/120.0: IndexError
+FAIL a3 2024 8.5/116.0: IndexError
+FAIL a1 2019 8.5/120.0: IndexError
+FAIL a2 2018 8.5/120.0: IndexError
+FAIL a3 2016 8.5/120.0: IndexError
+FAIL a1 2020 8.5/120.0: IndexError
+FAIL a3 2017 8.5/120.0: IndexError
+FAIL a2 2019 8.5/120.0: IndexError
+FAIL a3 2018 8.5/120.0: IndexError
+FAIL a1 2021 8.5/120.0: IndexError
+FAIL a2 2020 8.5/120.0: IndexError
+FAIL a1 2022 8.5/120.0: IndexError
+FAIL a1 2023 8.5/120.0: IndexError
+FAIL a3 2019 8.5/120.0: IndexError
+FAIL a2 2021 8.5/120.0: IndexError
+FAIL a3 2020 8.5/120.0: IndexError
+FAIL a2 2022 8.5/120.0: IndexError
+FAIL a1 2024 8.5/120.0: IndexError
+FAIL a2 2023 8.5/120.0: IndexError
+FAIL a3 2021 8.5/120.0: IndexError
+FAIL a1 2025 8.5/120.0: IndexError
+FAIL a2 2024 8.5/120.0: IndexError
+FAIL a3 2022 8.5/120.0: IndexError
+FAIL a3 2023 8.5/120.0: IndexError
+FAIL a1 2016 8.5/124.0: IndexError
+FAIL a2 2025 8.5/120.0: IndexError
+FAIL a1 2017 8.5/124.0: IndexError
+FAIL a3 2024 8.5/120.0: IndexError
+FAIL a1 2018 8.5/124.0: IndexError
+FAIL a2 2016 8.5/124.0: IndexError
+FAIL a3 2025 8.5/120.0: IndexError
+FAIL a2 2017 8.5/124.0: IndexError
+FAIL a1 2019 8.5/124.0: IndexError
+FAIL a2 2018 8.5/124.0: IndexError
+FAIL a3 2016 8.5/124.0: IndexError
+FAIL a1 2020 8.5/124.0: IndexError
+FAIL a3 2017 8.5/124.0: IndexError
+FAIL a2 2019 8.5/124.0: IndexError
+FAIL a3 2018 8.5/124.0: IndexError
+FAIL a1 2021 8.5/124.0: IndexError
+FAIL a1 2022 8.5/124.0: IndexError
+FAIL a3 2019 8.5/124.0: IndexError
+FAIL a2 2021 8.5/124.0: IndexError
+FAIL a2 2020 8.5/124.0: IndexError
+FAIL a2 2022 8.5/124.0: IndexError
+FAIL a1 2023 8.5/124.0: IndexError
+FAIL a1 2024 8.5/124.0: IndexError
+FAIL a3 2021 8.5/124.0: IndexError
+FAIL a3 2020 8.5/124.0: IndexError
+FAIL a3 2022 8.5/124.0: IndexError
+FAIL a2 2023 8.5/124.0: IndexError
+FAIL a2 2024 8.5/124.0: IndexError
+FAIL a1 2025 8.5/124.0: IndexError
+FAIL a1 2016 12.5/116.0: IndexError
+FAIL a1 2017 12.5/116.0: IndexError
+FAIL a3 2023 8.5/124.0: IndexError
+FAIL a3 2024 8.5/124.0: IndexError
+FAIL a2 2025 8.5/124.0: IndexError
+FAIL a2 2016 12.5/116.0: IndexError
+FAIL a2 2017 12.5/116.0: IndexError
+FAIL a1 2019 12.5/116.0: IndexError
+FAIL a3 2025 8.5/124.0: IndexError
+FAIL a3 2017 12.5/116.0: IndexError
+FAIL a3 2016 12.5/116.0: IndexError
+FAIL a1 2018 12.5/116.0: IndexError
+FAIL a2 2019 12.5/116.0: IndexError
+FAIL a1 2020 12.5/116.0: IndexError
+-- progress 60/150
+FAIL a2 2018 12.5/116.0: IndexError
+FAIL a1 2022 12.5/116.0: IndexError
+FAIL a2 2020 12.5/116.0: IndexError
+FAIL a1 2021 12.5/116.0: IndexError
+FAIL a2 2022 12.5/116.0: IndexError
+FAIL a3 2019 12.5/116.0: IndexError
+FAIL a3 2018 12.5/116.0: IndexError
+FAIL a3 2022 12.5/116.0: IndexError
+FAIL a3 2020 12.5/116.0: IndexError
+FAIL a2 2021 12.5/116.0: IndexError
+FAIL a1 2024 12.5/116.0: IndexError
+FAIL a1 2025 12.5/116.0: IndexError
+FAIL a1 2023 12.5/116.0: IndexError
+FAIL a1 2016 12.5/120.0: IndexError
+FAIL a3 2021 12.5/116.0: IndexError
+FAIL a2 2024 12.5/116.0: IndexError
+FAIL a2 2025 12.5/116.0: IndexError
+FAIL a2 2023 12.5/116.0: IndexError
+FAIL a2 2016 12.5/120.0: IndexError
+FAIL a1 2017 12.5/120.0: IndexError
+FAIL a3 2024 12.5/116.0: IndexError
+FAIL a3 2025 12.5/116.0: IndexError
+FAIL a3 2023 12.5/116.0: IndexError
+FAIL a3 2016 12.5/120.0: IndexError
+FAIL a2 2017 12.5/120.0: IndexError
+FAIL a1 2018 12.5/120.0: IndexError
+FAIL a1 2019 12.5/120.0: IndexError
+FAIL a1 2020 12.5/120.0: IndexError
+FAIL a1 2021 12.5/120.0: IndexError
+FAIL a3 2017 12.5/120.0: IndexError
+FAIL a2 2018 12.5/120.0: IndexError
+FAIL a2 2019 12.5/120.0: IndexError
+FAIL a2 2020 12.5/120.0: IndexError
+FAIL a2 2021 12.5/120.0: IndexError
+FAIL a1 2022 12.5/120.0: IndexError
+FAIL a3 2018 12.5/120.0: IndexError
+FAIL a3 2019 12.5/120.0: IndexError
+FAIL a3 2020 12.5/120.0: IndexError
+FAIL a3 2021 12.5/120.0: IndexError
+FAIL a1 2023 12.5/120.0: IndexError
+FAIL a2 2022 12.5/120.0: IndexError
+FAIL a1 2024 12.5/120.0: IndexError
+FAIL a1 2025 12.5/120.0: IndexError
+FAIL a1 2016 12.5/124.0: IndexError
+FAIL a2 2023 12.5/120.0: IndexError
+FAIL a3 2022 12.5/120.0: IndexError
+FAIL a2 2024 12.5/120.0: IndexError
+FAIL a2 2025 12.5/120.0: IndexError
+FAIL a2 2016 12.5/124.0: IndexError
+FAIL a3 2023 12.5/120.0: IndexError
+FAIL a3 2024 12.5/120.0: IndexError
+FAIL a3 2025 12.5/120.0: IndexError
+FAIL a3 2016 12.5/124.0: IndexError
+FAIL a1 2018 12.5/124.0: IndexError
+FAIL a1 2017 12.5/124.0: IndexError
+FAIL a1 2019 12.5/124.0: IndexError
+FAIL a1 2020 12.5/124.0: IndexError
+FAIL a2 2017 12.5/124.0: IndexError
+FAIL a2 2018 12.5/124.0: IndexError
+FAIL a2 2020 12.5/124.0: IndexError
+FAIL a2 2019 12.5/124.0: IndexError
+FAIL a1 2021 12.5/124.0: IndexError
+FAIL a3 2017 12.5/124.0: IndexError
+FAIL a3 2018 12.5/124.0: IndexError
+FAIL a3 2020 12.5/124.0: IndexError
+FAIL a3 2019 12.5/124.0: IndexError
+FAIL a2 2021 12.5/124.0: IndexError
+FAIL a1 2022 12.5/124.0: IndexError
+FAIL a1 2024 12.5/124.0: IndexError
+FAIL a1 2025 12.5/124.0: IndexError
+FAIL a2 2022 12.5/124.0: IndexError
+FAIL a3 2021 12.5/124.0: IndexError
+FAIL a1 2023 12.5/124.0: IndexError
+FAIL a2 2024 12.5/124.0: IndexError
+FAIL a2 2025 12.5/124.0: IndexError
+FAIL a3 2022 12.5/124.0: IndexError
+FAIL a1 2016 16.5/116.0: IndexError
+FAIL a2 2023 12.5/124.0: IndexError
+FAIL a3 2024 12.5/124.0: IndexError
+FAIL a3 2025 12.5/124.0: IndexError
+FAIL a2 2016 16.5/116.0: IndexError
+FAIL a1 2017 16.5/116.0: IndexError
+FAIL a3 2023 12.5/124.0: IndexError
+FAIL a1 2018 16.5/116.0: IndexError
+FAIL a1 2019 16.5/116.0: IndexError
+FAIL a1 2020 16.5/116.0: IndexError
+FAIL a3 2016 16.5/116.0: IndexError
+FAIL a2 2017 16.5/116.0: IndexError
+FAIL a2 2018 16.5/116.0: IndexError
+-- progress 90/150
+FAIL a2 2019 16.5/116.0: IndexError
+FAIL a2 2020 16.5/116.0: IndexError
+FAIL a1 2021 16.5/116.0: IndexError
+FAIL a3 2020 16.5/116.0: IndexError
+FAIL a3 2018 16.5/116.0: IndexError
+FAIL a3 2017 16.5/116.0: IndexError
+FAIL a2 2021 16.5/116.0: IndexError
+FAIL a3 2019 16.5/116.0: IndexError
+FAIL a1 2022 16.5/116.0: IndexError
+FAIL a1 2023 16.5/116.0: IndexError
+FAIL a1 2024 16.5/116.0: IndexError
+FAIL a3 2021 16.5/116.0: IndexError
+FAIL a1 2025 16.5/116.0: IndexError
+FAIL a2 2022 16.5/116.0: IndexError
+FAIL a2 2024 16.5/116.0: IndexError
+FAIL a1 2016 16.5/120.0: IndexError
+FAIL a2 2023 16.5/116.0: IndexError
+FAIL a2 2025 16.5/116.0: IndexError
+FAIL a3 2022 16.5/116.0: IndexError
+FAIL a3 2024 16.5/116.0: IndexError
+FAIL a3 2025 16.5/116.0: IndexError
+FAIL a3 2023 16.5/116.0: IndexError
+FAIL a1 2018 16.5/120.0: IndexError
+FAIL a1 2017 16.5/120.0: IndexError
+FAIL a2 2016 16.5/120.0: IndexError
+FAIL a2 2018 16.5/120.0: IndexError
+FAIL a2 2017 16.5/120.0: IndexError
+FAIL a1 2020 16.5/120.0: IndexError
+FAIL a1 2019 16.5/120.0: IndexError
+FAIL a3 2016 16.5/120.0: IndexError
+FAIL a3 2018 16.5/120.0: IndexError
+FAIL a2 2020 16.5/120.0: IndexError
+FAIL a2 2019 16.5/120.0: IndexError
+FAIL a3 2017 16.5/120.0: IndexError
+FAIL a1 2022 16.5/120.0: IndexError
+FAIL a3 2020 16.5/120.0: IndexError
+FAIL a1 2021 16.5/120.0: IndexError
+FAIL a1 2023 16.5/120.0: IndexError
+FAIL a3 2019 16.5/120.0: IndexError
+FAIL a2 2022 16.5/120.0: IndexError
+FAIL a1 2024 16.5/120.0: IndexError
+FAIL a2 2023 16.5/120.0: IndexError
+FAIL a1 2025 16.5/120.0: IndexError
+FAIL a3 2022 16.5/120.0: IndexError
+FAIL a2 2024 16.5/120.0: IndexError
+FAIL a2 2021 16.5/120.0: IndexError
+FAIL a3 2023 16.5/120.0: IndexError
+FAIL a2 2025 16.5/120.0: IndexError
+FAIL a3 2024 16.5/120.0: IndexError
+FAIL a1 2017 16.5/124.0: IndexError
+FAIL a1 2016 16.5/124.0: IndexError
+FAIL a3 2021 16.5/120.0: IndexError
+FAIL a3 2025 16.5/120.0: IndexError
+FAIL a2 2017 16.5/124.0: IndexError
+FAIL a1 2018 16.5/124.0: IndexError
+FAIL a2 2016 16.5/124.0: IndexError
+FAIL a1 2019 16.5/124.0: IndexError
+FAIL a1 2020 16.5/124.0: IndexError
+FAIL a3 2017 16.5/124.0: IndexError
+FAIL a3 2016 16.5/124.0: IndexError
+FAIL a2 2019 16.5/124.0: IndexError
+FAIL a2 2020 16.5/124.0: IndexError
+FAIL a1 2021 16.5/124.0: IndexError
+FAIL a2 2018 16.5/124.0: IndexError
+FAIL a1 2022 16.5/124.0: IndexError
+FAIL a3 2019 16.5/124.0: IndexError
+FAIL a3 2020 16.5/124.0: IndexError
+FAIL a3 2018 16.5/124.0: IndexError
+FAIL a2 2021 16.5/124.0: IndexError
+FAIL a2 2022 16.5/124.0: IndexError
+FAIL a1 2023 16.5/124.0: IndexError
+FAIL a1 2024 16.5/124.0: IndexError
+FAIL a1 2025 16.5/124.0: IndexError
+FAIL a3 2021 16.5/124.0: IndexError
+FAIL a3 2022 16.5/124.0: IndexError
+FAIL a2 2023 16.5/124.0: IndexError
+FAIL a2 2024 16.5/124.0: IndexError
+FAIL a1 2017 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2016 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2025 16.5/124.0: IndexError
+FAIL a3 2023 16.5/124.0: IndexError
+FAIL a3 2024 16.5/124.0: IndexError
+FAIL a2 2017 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2016 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2018 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2025 16.5/124.0: IndexError
+FAIL a1 2019 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2017 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2016 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2018 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2020 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2019 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2021 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+-- progress 120/150
+FAIL a1 2022 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2018 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2020 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2019 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2021 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2022 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2023 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2020 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2024 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2023 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2025 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2022 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2021 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2025 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2016 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2023 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2024 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2025 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2016 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2017 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2018 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2024 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2016 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2019 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2017 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2018 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2020 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2017 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2019 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2018 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2020 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2021 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2023 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2022 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2019 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2023 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2022 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2021 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2020 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2024 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2023 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2022 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2021 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2025 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2024 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2016 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2017 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2018 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2025 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2024 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2016 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2017 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2018 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2025 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2019 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2016 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2017 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2018 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2020 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2019 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2022 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2021 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2023 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2020 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2019 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2022 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2021 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2023 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2020 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2024 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2022 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2021 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2023 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2025 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2024 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2025 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2024 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2025 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+DONE total=150 fails=150: ['FAIL 2016 4.5/116.0', 'FAIL 2017 4.5/116.0', 'FAIL 2018 4.5/116.0', 'FAIL 2019 4.5/116.0', 'FAIL 2020 4.5/116.0']
+OK 2017 4.5/116.0 179108B
+OK 2016 4.5/116.0 179781B
+-- progress 0/150
+OK 2020 4.5/116.0 179748B
+OK 2018 4.5/116.0 179204B
+OK 2019 4.5/116.0 179298B
+OK 2021 4.5/116.0 179029B
+OK 2023 4.5/116.0 179160B
+OK 2024 4.5/116.0 179653B
+OK 2025 4.5/116.0 179043B
+OK 2022 4.5/116.0 179025B
+OK 2018 4.5/120.0 179284B
+OK 2016 4.5/120.0 179829B
+OK 2017 4.5/120.0 179120B
+OK 2019 4.5/120.0 179465B
+OK 2020 4.5/120.0 179810B
+OK 2025 4.5/120.0 179126B
+OK 2021 4.5/120.0 179186B
+OK 2016 4.5/124.0 134840B
+OK 2022 4.5/120.0 179220B
+OK 2023 4.5/120.0 179225B
+OK 2020 4.5/124.0 134802B
+OK 2017 4.5/124.0 134261B
+OK 2024 4.5/120.0 179708B
+OK 2018 4.5/124.0 134489B
+OK 2019 4.5/124.0 134558B
+OK 2022 4.5/124.0 134365B
+OK 2024 4.5/124.0 134706B
+OK 2021 4.5/124.0 134355B
+OK 2016 8.5/116.0 183938B
+OK 2023 4.5/124.0 134432B
+OK 2018 8.5/116.0 183260B
+OK 2019 8.5/116.0 183409B
+OK 2025 4.5/124.0 134358B
+-- progress 30/150
+OK 2017 8.5/116.0 183332B
+OK 2023 8.5/116.0 183457B
+OK 2022 8.5/116.0 183301B
+OK 2020 8.5/116.0 183915B
+OK 2024 8.5/116.0 183819B
+OK 2021 8.5/116.0 183333B
+OK 2016 8.5/120.0 184229B
+OK 2025 8.5/116.0 183146B
+OK 2021 8.5/120.0 183555B
+OK 2017 8.5/120.0 183517B
+OK 2019 8.5/120.0 183638B
+OK 2020 8.5/120.0 184123B
+OK 2018 8.5/120.0 183528B
+OK 2022 8.5/120.0 183637B
+OK 2016 8.5/124.0 138106B
+OK 2025 8.5/120.0 183543B
+OK 2024 8.5/120.0 184090B
+OK 2023 8.5/120.0 183504B
+OK 2019 8.5/124.0 137755B
+OK 2020 8.5/124.0 137977B
+OK 2017 8.5/124.0 137387B
+OK 2018 8.5/124.0 137579B
+OK 2021 8.5/124.0 137406B
+OK 2024 8.5/124.0 138010B
+OK 2025 8.5/124.0 137468B
+OK 2022 8.5/124.0 137468B
+OK 2016 12.5/116.0 186800B
+OK 2023 8.5/124.0 137482B
+-- progress 60/150
+OK 2018 12.5/116.0 186364B
+OK 2020 12.5/116.0 186887B
+OK 2019 12.5/116.0 186341B
+OK 2017 12.5/116.0 186455B
+OK 2022 12.5/116.0 186361B
+OK 2021 12.5/116.0 186414B
+OK 2023 12.5/116.0 186470B
+OK 2016 12.5/120.0 186961B
+OK 2024 12.5/116.0 186848B
+OK 2025 12.5/116.0 186217B
+OK 2017 12.5/120.0 186208B
+OK 2018 12.5/120.0 186279B
+OK 2020 12.5/120.0 186865B
+OK 2021 12.5/120.0 186413B
+OK 2019 12.5/120.0 186519B
+OK 2022 12.5/120.0 186391B
+OK 2023 12.5/120.0 186388B
+OK 2024 12.5/120.0 186815B
+OK 2018 12.5/124.0 139744B
+OK 2025 12.5/120.0 186152B
+OK 2017 12.5/124.0 139651B
+OK 2016 12.5/124.0 140225B
+OK 2019 12.5/124.0 139822B
+OK 2020 12.5/124.0 140129B
+OK 2023 12.5/124.0 139755B
+OK 2021 12.5/124.0 139648B
+OK 2022 12.5/124.0 139698B
+OK 2025 12.5/124.0 139511B
+OK 2017 16.5/116.0 186075B
+OK 2019 16.5/116.0 186221B
+OK 2024 12.5/124.0 140140B
+OK 2016 16.5/116.0 186443B
+-- progress 90/150
+OK 2018 16.5/116.0 186006B
+OK 2021 16.5/116.0 186201B
+OK 2022 16.5/116.0 186202B
+OK 2020 16.5/116.0 186681B
+OK 2023 16.5/116.0 186262B
+OK 2024 16.5/116.0 186552B
+OK 2025 16.5/116.0 185865B
+OK 2016 16.5/120.0 186536B
+OK 2018 16.5/120.0 186068B
+OK 2021 16.5/120.0 186155B
+OK 2019 16.5/120.0 186163B
+OK 2020 16.5/120.0 186621B
+OK 2023 16.5/120.0 186187B
+OK 2022 16.5/120.0 186149B
+OK 2017 16.5/120.0 185898B
+OK 2024 16.5/120.0 186426B
+OK 2016 16.5/124.0 140025B
+OK 2017 16.5/124.0 139664B
+OK 2018 16.5/124.0 139735B
+OK 2025 16.5/120.0 185649B
+OK 2019 16.5/124.0 139680B
+OK 2021 16.5/124.0 139675B
+OK 2023 16.5/124.0 139788B
+OK 2020 16.5/124.0 140170B
+OK 2022 16.5/124.0 139740B
+FAIL a1 2017 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+OK 2024 16.5/124.0 140050B
+FAIL a1 2016 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+OK 2025 16.5/124.0 139376B
+FAIL a1 2018 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2020 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2019 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2017 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2016 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2018 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2020 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2019 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2017 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2018 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2016 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2019 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2020 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+-- progress 120/150
+FAIL a1 2021 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2022 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2024 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2023 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2025 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2021 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2022 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2025 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2024 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2023 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2021 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2024 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2025 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2023 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2016 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2017 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2018 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2019 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2022 20.5/116.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2019 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2018 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2017 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2020 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2019 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2016 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2018 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2017 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2020 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2021 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2022 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2016 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2023 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2020 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2021 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2024 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2023 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2022 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2025 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2021 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2022 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2023 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2024 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2025 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2018 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2024 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2017 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2025 20.5/120.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2018 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2016 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2019 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2020 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2018 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2016 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2019 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2017 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2020 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2021 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2016 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2019 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2020 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2021 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2022 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2023 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2024 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2017 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2021 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2022 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2024 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2023 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a1 2025 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2022 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2024 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2023 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a2 2025 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+FAIL a3 2025 20.5/124.0: HTTP 422 {"header":"The POWER Daily API failed to complete your request; please review the errors below and the POWER Docs (https://power.larc.nasa.gov/docs/).","messages":["Please provide at least a 2 degree range in latitude; otherwise use the point endpoint."]}
+DONE total=150 fails=30: ['FAIL 2016 20.5/116.0', 'FAIL 2017 20.5/116.0', 'FAIL 2018 20.5/116.0', 'FAIL 2019 20.5/116.0', 'FAIL 2020 20.5/116.0']
+OK 2018 top-row/116.0 111200B
+OK 2019 top-row/116.0 111372B
+OK 2016 top-row/116.0 111365B
+OK 2020 top-row/116.0 111625B
+OK 2017 top-row/116.0 111108B
+OK 2024 top-row/116.0 111485B
+OK 2025 top-row/116.0 111107B
+OK 2021 top-row/116.0 111425B
+OK 2022 top-row/116.0 111169B
+OK 2023 top-row/116.0 111284B
+OK 2016 top-row/120.0 111618B
+OK 2019 top-row/120.0 111486B
+OK 2017 top-row/120.0 111372B
+OK 2018 top-row/120.0 111299B
+OK 2020 top-row/120.0 111796B
+OK 2023 top-row/120.0 111472B
+OK 2021 top-row/120.0 111486B
+OK 2022 top-row/120.0 111449B
+OK 2017 top-row/124.0 83680B
+OK 2024 top-row/120.0 111700B
+OK 2025 top-row/120.0 111209B
+OK 2016 top-row/124.0 83862B
+OK 2022 top-row/124.0 83649B
+OK 2018 top-row/124.0 83703B
+OK 2019 top-row/124.0 83685B
+OK 2021 top-row/124.0 83669B
+OK 2020 top-row/124.0 83927B
+OK 2024 top-row/124.0 83954B
+OK 2023 top-row/124.0 83744B
+OK 2025 top-row/124.0 83533B
+DONE top-row fails=0
