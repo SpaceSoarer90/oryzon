@@ -9,6 +9,7 @@
   --card: #fff;
   --border: #d3dcbd;
   --green: #2e9e5b;
+  --hot-pink : #e91e63;
   --safe-top: max(12px, env(safe-area-inset-top));
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
@@ -1055,6 +1056,60 @@ body {
 }
 .welcome-btn:active {
   background: var(--olive-deep);
+}
+
+/* the "what is on your lot?" choices */
+.lot-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+/* a title straight above the choices (no paragraph between them) */
+.welcome-card h2 + .lot-options {
+  margin-top: 16px;
+}
+.lot-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 26px;
+  background: #2b3a1a; /* dark green */
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25);
+}
+/* each button is a lighter shade than the one before it */
+.lot-btn:nth-child(2) {
+  background: var(--olive-dark); /* olive */
+}
+.lot-btn:nth-child(3) {
+  background: var(--olive-deep); /* light olive */
+}
+
+.lot-btn b {
+  font-size: 16px;
+  font-weight: 700;
+}
+.lot-btn span {
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+.lot-btn:active {
+  filter: brightness(0.9);
+}
+.lot-btn:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 3px;
+}
+/* the three lot-state pills in the Set up form wrap on narrow screens */
+.lot-pills {
+  flex-wrap: wrap;
 }
 
 /* ---------- slide-out menu ---------- */
