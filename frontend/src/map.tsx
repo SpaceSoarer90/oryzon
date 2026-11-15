@@ -150,32 +150,6 @@ function shortDate(iso: string): string {
 
 type Performance = "good" | "average" | "poor" | "failure" | "unknown";
 type SoilSource = "sensor" | "lab" | "manual";
-// What is on the lot right now. Asked right after a farm is outlined; it decides which questions follow.
-type LotState = "resting" | "harvested" | "growing";
-const LOT_STATES: { value: LotState; label: string; hint: string; short: string }[] = [
-  { value: "resting", label: "Empty (resting stage)", hint: "Nothing is planted right now", short: "Resting" },
-  { value: "harvested", label: "Newly harvested", hint: "The last crop was just harvested", short: "Newly harvested" },
-  { value: "growing", label: "Has existing crops", hint: "A crop is growing in the field", short: "Has crops" },
-];
-const LOT_LABEL = Object.fromEntries(LOT_STATES.map((o) => [o.value, o.label])) as Record<LotState, string>;
-const LOT_SHORT = Object.fromEntries(LOT_STATES.map((o) => [o.value, o.short])) as Record<LotState, string>;
-
-// What the farmer plans to do with a newly harvested lot. Asked once the Set up form is finished.
-type PostHarvest = "rest" | "yield" | "cover";
-const POST_HARVEST: { value: PostHarvest; label: string; hint: string }[] = [
-  { value: "rest", label: "Rest", hint: "Leave the field fallow so the soil can recover" },
-  { value: "yield", label: "Yield Crop", hint: "Plant another crop to harvest" },
-  { value: "cover", label: "Cover Crop", hint: "Plant to protect and feed the soil" },
-];
-const POST_LABEL = Object.fromEntries(POST_HARVEST.map((o) => [o.value, o.label])) as Record<PostHarvest, string>;
-
-// The crop that is growing on a plot right now (only asked when the lot has existing crops).
-interface CurrentCrop {
-  crop: string;
-  plantingDate: string; // YYYY-MM-DD
-  harvestDate: string; // expected harvest, YYYY-MM-DD
-}
-
 // One past crop on a plot ("Crop record 1", "Crop record 2", ...).
 interface CropRecord {
   id: string;
@@ -198,7 +172,6 @@ interface Plot {
   name: string;
   area: string; // hectares, digits and at most one decimal point (calculated when `points` is set)
   points?: LatLng[]; // the plot's outline on the map, drawn inside the farm outline
-  currentCrop?: CurrentCrop; // the crop growing now (lot state "growing")
   cropRecords: CropRecord[];
   soil: SoilInfo;
 }
@@ -249,26 +222,10 @@ const newPlot = (area = ""): Plot => ({ id: uid(), name: "", area, cropRecords: 
 
 const plotLabel = (p: Plot, i: number) => p.name.trim() || `Plot ${i + 1}`;
 const recordBlank = (r: CropRecord) => !r.crop && !r.plantingDate && !r.harvestDate && !r.amount && !r.performance;
-// Today as YYYY-MM-DD in the farmer's own time zone (toISOString would give the UTC date).
-function todayISO(): string {
-  const n = new Date();
-  const p = (x: number) => String(x).padStart(2, "0");
-  return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}`;
-}
-// Past crops are already harvested, so once the lot state is known their harvest date cannot be in the future.
-const recordError = (r: CropRecord, lot: LotState | null = null): string | null => {
-  if (r.plantingDate && r.harvestDate && r.harvestDate < r.plantingDate)
-    return "The harvest date must be on or after the planting date.";
-  if (lot && r.harvestDate && r.harvestDate > todayISO()) return "The harvest date can't be in the future.";
-  return null;
-};
-const currentCropError = (c: CurrentCrop | undefined): string | null => {
-  if (!c) return null;
-  if (c.plantingDate && c.plantingDate > todayISO()) return "The planting date can't be in the future.";
-  if (c.plantingDate && c.harvestDate && c.harvestDate < c.plantingDate)
-    return "The expected harvest date must be on or after the planting date.";
-  return null;
-};
+const recordError = (r: CropRecord): string | null =>
+  r.plantingDate && r.harvestDate && r.harvestDate < r.plantingDate
+    ? "The harvest date must be on or after the planting date."
+    : null;
 
 // The plot's most recent crop (by harvest date); records without a date count as oldest.
 function latestRecord(p: Plot): CropRecord | null {
@@ -314,8 +271,6 @@ interface Farm {
   location?: string; // filled in on the Set up farm screen
   details?: FarmDetails;
   plots?: Plot[]; // each plot: its name, area, past crop records and soil readings
-  lotState?: LotState; // what is on the lot now, answered right after the outline is finished
-  postHarvest?: PostHarvest; // newly harvested lots only: rest, yield crop or cover crop
 }
 interface FarmStore {
   farms: Farm[];
@@ -980,36 +935,24 @@ function MapTapDismiss({
 function PlotCard({
   plot,
   index,
-  lot,
-  post,
   onEdit,
   onClose,
 }: {
   plot: Plot;
   index: number;
-  lot?: LotState;
-  post?: PostHarvest;
   onEdit: () => void;
   onClose: () => void;
 }) {
   const rec = latestRecord(plot);
-  const cur = lot === "growing" ? plot.currentCrop : undefined;
-  const dateText = (iso: string) => formatDate(iso) ?? iso;
   const areaHa = plot.area && /\d/.test(plot.area) ? plot.area : plot.points ? formatHa(polygonAreaHa(plot.points)) : "";
   const s = plot.soil;
   const rows: [string, string][] = [];
   if (areaHa) rows.push(["Area", `${areaHa} ha`]);
-  if (lot) rows.push(["Lot status", LOT_SHORT[lot]]);
-  if (lot === "harvested" && post) rows.push(["Post-harvest plan", POST_LABEL[post]]);
-  if (cur?.crop) rows.push(["Current crop", cur.crop]);
-  if (cur?.plantingDate) rows.push(["Planted", dateText(cur.plantingDate)]);
-  if (cur?.harvestDate) rows.push(["Expected harvest", dateText(cur.harvestDate)]);
   if (rec?.crop) rows.push(["Last crop", rec.crop]);
-  if (rec?.plantingDate && lot !== "resting")
-    rows.push([cur?.crop ? "Last crop planted" : "Planted", dateText(rec.plantingDate)]);
-  if (rec?.harvestDate) rows.push([cur?.crop ? "Last crop harvested" : "Harvested", dateText(rec.harvestDate)]);
-  if (rec && lot !== "resting" && amountText(rec)) rows.push(["Harvest", amountText(rec)!]);
-  if (rec?.performance && lot !== "resting") rows.push(["Performance", PERFORMANCE_LABEL[rec.performance]]);
+  if (rec?.plantingDate) rows.push(["Planted", formatDate(rec.plantingDate) ?? rec.plantingDate]);
+  if (rec?.harvestDate) rows.push(["Harvested", formatDate(rec.harvestDate) ?? rec.harvestDate]);
+  if (rec && amountText(rec)) rows.push(["Harvest", amountText(rec)!]);
+  if (rec?.performance) rows.push(["Performance", PERFORMANCE_LABEL[rec.performance]]);
   if (s.texture) rows.push(["Soil texture", s.texture]);
   if (s.moisture !== null)
     rows.push([
@@ -1251,34 +1194,19 @@ function farmDetailRows(farm: Farm, place: string | null): [string, string][] {
     ["Location", or(farm.location || place)],
     ["Farm size", `${polygonAreaHa(farm.points).toFixed(2)} ha`],
   ];
-  const lot = farm.lotState;
-  if (lot) rows.push(["Lot status", LOT_LABEL[lot]]);
-  if (lot === "harvested" && farm.postHarvest) rows.push(["Post-harvest plan", POST_LABEL[farm.postHarvest]]);
 
   if (farm.plots && farm.plots.length > 0) {
     // New format: one group of rows per plot.
     farm.plots.forEach((p, i) => {
       const label = plotLabel(p, i);
       rows.push([`${label}: area`, p.area && /\d/.test(p.area) ? `${p.area} ha` : "Not provided"]);
-      const cur = lot === "growing" ? p.currentCrop : undefined;
-      if (lot === "growing") {
-        rows.push([`${label}: current crop`, or(cur?.crop)]);
-        rows.push([`${label}: planted`, or(cur?.plantingDate ? formatDate(cur.plantingDate) : null)]);
-        rows.push([`${label}: expected harvest`, or(cur?.harvestDate ? formatDate(cur.harvestDate) : null)]);
-      }
       const r = latestRecord(p);
       rows.push([`${label}: last crop`, or(r?.crop)]);
       if (r) {
-        if (lot !== "resting")
-          rows.push([
-            lot === "growing" ? `${label}: last crop planted` : `${label}: planted`,
-            or(r.plantingDate ? formatDate(r.plantingDate) : null),
-          ]);
+        rows.push([`${label}: planted`, or(r.plantingDate ? formatDate(r.plantingDate) : null)]);
         rows.push([`${label}: harvested`, or(r.harvestDate ? formatDate(r.harvestDate) : null)]);
-        if (lot !== "resting") {
-          rows.push([`${label}: harvest amount`, or(amountText(r))]);
-          rows.push([`${label}: performance`, r.performance ? PERFORMANCE_LABEL[r.performance] : "Not provided"]);
-        }
+        rows.push([`${label}: harvest amount`, or(amountText(r))]);
+        rows.push([`${label}: performance`, r.performance ? PERFORMANCE_LABEL[r.performance] : "Not provided"]);
       }
       if (p.cropRecords.filter((x) => !recordBlank(x)).length > 1) {
         rows.push([`${label}: crop records`, String(p.cropRecords.filter((x) => !recordBlank(x)).length)]);
@@ -1588,14 +1516,7 @@ function SetupForm({
 }: {
   farm: Farm;
   place: string | null;
-  onSubmit: (patch: {
-    name: string;
-    location: string;
-    details: FarmDetails;
-    plots: Plot[];
-    lotState: LotState | null;
-    postHarvest: PostHarvest | null;
-  }) => void;
+  onSubmit: (patch: { name: string; location: string; details: FarmDetails; plots: Plot[] }) => void;
   onBack: () => void;
   onPlotsChange: (plots: Plot[]) => void; // lets the map show the plots as they are being edited
   onDrawPlot: (plotId: string) => void; // switch to the map so the farmer can outline this plot
@@ -1609,17 +1530,10 @@ function SetupForm({
   const [location, setLocation] = useState(farm.location ?? place ?? "");
   const [locationEdited, setLocationEdited] = useState(Boolean(farm.location));
   const [d, setD] = useState<FarmDetails>(() => normalizeDetails(farm.details));
-  // What is on the lot now (answered right after the outline). It decides which questions are shown.
-  const [lot, setLot] = useState<LotState | null>(() =>
-    farm.lotState && LOT_STATES.some((o) => o.value === farm.lotState) ? farm.lotState : null,
-  );
-  // The post-harvest plan (newly harvested lots). Left empty, the farmer is asked once the form is finished.
-  const [post, setPost] = useState<PostHarvest | null>(farm.postHarvest ?? null);
   const [plots, setPlots] = useState<Plot[]>(() => {
     const initial = normalizePlots(farm);
-    // Start with one empty crop record to fill in (not when a crop is growing: its own questions come first).
-    if (lot !== "growing" && initial.every((p) => p.cropRecords.length === 0))
-      initial[0] = { ...initial[0], cropRecords: [newCropRecord()] };
+    // Start with one empty crop record to fill in.
+    if (initial.every((p) => p.cropRecords.length === 0)) initial[0] = { ...initial[0], cropRecords: [newCropRecord()] };
     return initial;
   });
   const [active, setActive] = useState(() => Math.max(0, plots.findIndex((p) => p.id === focusPlotId))); // which plot tab is open
@@ -1667,9 +1581,6 @@ function SetupForm({
 
   const plot = plots[Math.min(active, plots.length - 1)];
   const plotIndex = plots.indexOf(plot);
-  const current: CurrentCrop = plot.currentCrop ?? { crop: "", plantingDate: "", harvestDate: "" };
-  const updateCurrent = (patch: Partial<CurrentCrop>) => updatePlot({ currentCrop: { ...current, ...patch } });
-  const today = todayISO();
 
   const updatePlot = (patch: Partial<Plot>) =>
     setPlots((prev) => prev.map((p) => (p === plot ? { ...p, ...patch } : p)));
@@ -1726,10 +1637,7 @@ function SetupForm({
   const datesBackwards = isGovernment && d.irrigationStart && d.irrigationEnd && d.irrigationEnd < d.irrigationStart;
 
   const plotsValid = plots.every(
-    (p) =>
-      p.area !== "." &&
-      p.cropRecords.every((r) => r.amount !== "." && !recordError(r, lot)) &&
-      (lot !== "growing" || !currentCropError(p.currentCrop)),
+    (p) => p.area !== "." && p.cropRecords.every((r) => r.amount !== "." && !recordError(r)),
   );
   const step1Valid = name.trim().length > 0 && plotsValid;
   const canSave = step1Valid && !datesBackwards;
@@ -1755,72 +1663,14 @@ function SetupForm({
     };
   }
   function cleanedPlots(): Plot[] {
-    return plots.map((p) => {
-      const c = p.currentCrop;
-      // The current crop only applies while the lot has existing crops.
-      const keepCurrent = lot === "growing" && c && (c.crop || c.plantingDate || c.harvestDate);
-      return {
-        ...p,
-        name: p.name.trim(),
-        currentCrop: keepCurrent ? c : undefined,
-        cropRecords: p.cropRecords.filter((r) => !recordBlank(r)),
-      };
-    });
+    return plots.map((p) => ({
+      ...p,
+      name: p.name.trim(),
+      cropRecords: p.cropRecords.filter((r) => !recordBlank(r)),
+    }));
   }
 
   const lastRecord = latestRecord(plot);
-
-  // Wording and the summary card change with what is on the lot.
-  const recordsHeading =
-    lot === "resting"
-      ? "Last Crop (optional)"
-      : lot === "harvested"
-        ? "Latest Harvest"
-        : lot === "growing"
-          ? "Previous Crops (optional)"
-          : "Crop Records";
-  const recordsNote =
-    lot === "resting"
-      ? "Your lot is resting. If you remember what grew here last, it helps us judge soil recovery and rotation."
-      : lot === "harvested"
-        ? "Tell us about the crop you just harvested. You can add older crops too."
-        : lot === "growing"
-          ? "What grew here before the current crop helps us judge nutrient demand and rotation."
-          : "";
-  const addRecordLabel =
-    lot === "growing" ? "Add a previous crop" : allRecords.length === 0 ? "Add a crop record" : "Add another crop record";
-  const plotLine = `${plotLabel(plot, plotIndex)}${plot.area && /\d/.test(plot.area) ? `, ${plot.area} ha` : ""}`;
-  const dateText = (iso: string) => formatDate(iso) ?? iso;
-  const lastHarvested = lastRecord?.harvestDate ? `Harvested ${dateText(lastRecord.harvestDate)}` : "No harvest date";
-  const summary =
-    lot === "growing"
-      ? {
-          title: "Your Current Crop",
-          main: current.crop || "No crop recorded",
-          lines: [
-            plotLine,
-            current.plantingDate ? `Planted ${dateText(current.plantingDate)}` : "No planting date",
-            current.harvestDate ? `Expected harvest ${dateText(current.harvestDate)}` : "No expected harvest date",
-          ],
-          note: "The current crop and its planting date help us follow its growth and water needs.",
-        }
-      : lot === "resting"
-        ? {
-            title: "Your Last Crop",
-            main: lastRecord?.crop || "No crop recorded",
-            lines: [plotLine, "Lot is resting", lastHarvested],
-            note: "How long the lot has rested and what grew last help us judge soil recovery and rotation compatibility.",
-          }
-        : {
-            title: lot === "harvested" ? "Your Latest Harvest" : "Your Previous Harvest",
-            main: lastRecord?.crop || "No crop recorded",
-            lines: [
-              plotLine,
-              lastRecord ? (amountText(lastRecord) ?? "Harvest amount not given") : "No harvest amount",
-              lastHarvested,
-            ],
-            note: "Previous crop history will be used to evaluate nutrient demand and rotation compatibility.",
-          };
   const cropOptions = (current: string) => (current && !CROPS.includes(current) ? [...CROPS, current] : CROPS);
 
   const tabs = (
@@ -1854,14 +1704,7 @@ function SetupForm({
         if (step === 1) {
           if (step1Valid) goToStep(2);
         } else if (canSave) {
-          onSubmit({
-            name: name.trim(),
-            location: location.trim(),
-            details: cleanedDetails(),
-            plots: cleanedPlots(),
-            lotState: lot,
-            postHarvest: lot === "harvested" ? post : null,
-          });
+          onSubmit({ name: name.trim(), location: location.trim(), details: cleanedDetails(), plots: cleanedPlots() });
         }
       }}
     >
@@ -1889,22 +1732,6 @@ function SetupForm({
               <input value={`${sizeHa.toFixed(2)} ha`} readOnly aria-readonly="true" className="computed" />
             </label>
             <p className="setup-note">Calculated from your outline ({Math.round(sizeHa * 10000).toLocaleString()} m²).</p>
-            <div className="setup-choice">
-              <span id="lot-label">What is on the lot now?</span>
-              <div className="setup-pills lot-pills" role="group" aria-labelledby="lot-label">
-                {LOT_STATES.map((o) => (
-                  <button
-                    type="button"
-                    key={o.value}
-                    className={`setup-pill ${lot === o.value ? "on" : ""}`}
-                    aria-pressed={lot === o.value}
-                    onClick={() => setLot(o.value)}
-                  >
-                    {o.short}
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
 
           <h3 className="setup-heading">Your Farm Plots</h3>
@@ -1957,51 +1784,9 @@ function SetupForm({
             </p>
           </div>
 
-          {lot === "growing" && (
-            <>
-              <h3 className="setup-heading">Current Crop</h3>
-              <div className="setup-card">
-                <h4 className="plot-title">{plotLabel(plot, plotIndex)}</h4>
-                <label className="setup-field">
-                  <span>Which crop is growing?</span>
-                  <select value={current.crop} onChange={(e) => updateCurrent({ crop: e.target.value })}>
-                    <option value="">Select a crop</option>
-                    {cropOptions(current.crop).map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="setup-grid2">
-                  <label className="setup-field">
-                    <span>Planting date</span>
-                    <input
-                      type="date"
-                      value={current.plantingDate}
-                      max={today}
-                      onChange={(e) => updateCurrent({ plantingDate: e.target.value })}
-                    />
-                  </label>
-                  <label className="setup-field">
-                    <span>Expected harvest</span>
-                    <input
-                      type="date"
-                      value={current.harvestDate}
-                      min={current.plantingDate || undefined}
-                      onChange={(e) => updateCurrent({ harvestDate: e.target.value })}
-                    />
-                  </label>
-                </div>
-                {currentCropError(plot.currentCrop) && <p className="setup-error">{currentCropError(plot.currentCrop)}</p>}
-              </div>
-            </>
-          )}
-
-          <h3 className="setup-heading">{recordsHeading}</h3>
-          {recordsNote && <p className="setup-note">{recordsNote}</p>}
+          <h3 className="setup-heading">Previous Crop Records</h3>
           {allRecords.map(({ r, plotId }, ri) => {
-            const err = recordError(r, lot);
+            const err = recordError(r);
             return (
               <div className="setup-record" key={r.id}>
                 <div className="setup-record-head">
@@ -2038,28 +1823,23 @@ function SetupForm({
                   </select>
                 </label>
 
-                <div className={lot === "resting" ? undefined : "setup-grid2"}>
-                  {lot !== "resting" && (
-                    <label className="setup-field">
-                      <span>Planting date</span>
-                      <input type="date" value={r.plantingDate} onChange={(e) => updateRecord(r.id, { plantingDate: e.target.value })} />
-                    </label>
-                  )}
+                <div className="setup-grid2">
                   <label className="setup-field">
-                    <span>{lot === "resting" ? "When was it harvested?" : "Harvest date"}</span>
+                    <span>Planting date</span>
+                    <input type="date" value={r.plantingDate} onChange={(e) => updateRecord(r.id, { plantingDate: e.target.value })} />
+                  </label>
+                  <label className="setup-field">
+                    <span>Harvest date</span>
                     <input
                       type="date"
                       value={r.harvestDate}
                       min={r.plantingDate || undefined}
-                      max={lot ? today : undefined}
                       onChange={(e) => updateRecord(r.id, { harvestDate: e.target.value })}
                     />
                   </label>
                 </div>
                 {err && <p className="setup-error">{err}</p>}
 
-                {lot !== "resting" && (
-                  <>
                 <h5 className="setup-sub">Harvest information</h5>
                 <div className="setup-field">
                   <span>How much did you harvest?</span>
@@ -2093,8 +1873,6 @@ function SetupForm({
                   options={PERFORMANCES}
                   onChange={(v) => updateRecord(r.id, { performance: v })}
                 />
-                  </>
-                )}
               </div>
             );
           })}
@@ -2104,25 +1882,32 @@ function SetupForm({
             className="setup-add"
             onClick={() => updatePlot({ cropRecords: [...plot.cropRecords, newCropRecord()] })}
           >
-            <span aria-hidden="true">⊕</span> {addRecordLabel}
+            <span aria-hidden="true">⊕</span> Add another crop record
           </button>
         </>
       ) : (
         <>
           <div className="setup-card">
-            <h3 className="setup-card-title">{summary.title}</h3>
+            <h3 className="setup-card-title">Your Previous Harvest</h3>
             <div className="setup-summary">
               <div className="setup-thumb">
                 <FarmThumb key={plot.id + (plot.points ? "p" : "f")} points={plot.points ?? farm.points} />
               </div>
               <div className="setup-summary-text">
-                <b>{summary.main}</b>
-                {summary.lines.map((t, i) => (
-                  <span key={i}>{t}</span>
-                ))}
+                <b>{lastRecord?.crop || "No crop recorded"}</b>
+                <span>
+                  {plotLabel(plot, plotIndex)}
+                  {plot.area && /\d/.test(plot.area) ? `, ${plot.area} ha` : ""}
+                </span>
+                <span>{lastRecord ? (amountText(lastRecord) ?? "Harvest amount not given") : "No harvest amount"}</span>
+                <span>
+                  {lastRecord?.harvestDate ? `Harvested ${formatDate(lastRecord.harvestDate) ?? lastRecord.harvestDate}` : "No harvest date"}
+                </span>
               </div>
             </div>
-            <p className="setup-note">{summary.note}</p>
+            <p className="setup-note">
+              Previous crop history will be used to evaluate nutrient demand and rotation compatibility.
+            </p>
           </div>
 
           <h3 className="setup-heading">Soil Characteristics</h3>
@@ -2252,29 +2037,6 @@ function SetupForm({
               {datesBackwards && <p className="setup-error">The end date must be on or after the start date.</p>}
             </>
           )}
-
-          {lot === "harvested" && (
-            <>
-              <h3 className="setup-heading">After the Harvest</h3>
-              <div className="setup-choice">
-                <span id="post-label">Post-harvest plan</span>
-                <div className="setup-pills lot-pills" role="group" aria-labelledby="post-label">
-                  {POST_HARVEST.map((o) => (
-                    <button
-                      type="button"
-                      key={o.value}
-                      className={`setup-pill ${post === o.value ? "on" : ""}`}
-                      aria-pressed={post === o.value}
-                      onClick={() => setPost(post === o.value ? null : o.value)}
-                    >
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <p className="setup-note">Not sure yet? Leave this empty and we will ask when you tap Next.</p>
-            </>
-          )}
         </>
       )}
 
@@ -2365,10 +2127,6 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
   const [fitNonce, setFitNonce] = useState(0);
   // First visit with no farm: show a prompt asking the user to add one.
   const [welcome, setWelcome] = useState(initial.farms.length === 0);
-  // id of a just-outlined farm that is waiting for the "what is on the lot?" answer
-  const [lotPrompt, setLotPrompt] = useState<string | null>(null);
-  // id of a newly harvested farm whose Set up form is finished and that is waiting for its post-harvest choice
-  const [postPrompt, setPostPrompt] = useState<string | null>(null);
   const [data, setData] = useState<DayData[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -2454,19 +2212,10 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
       return [...prev, { id, name: `Farm ${n}`, points: poly.points }];
     });
     setActiveId(id);
-    // First ask what is on the lot; the Set up form opens once that is answered (see chooseLotState).
-    setLotPrompt(id);
-    setSheetView("dashboard");
-    setSheet("peek");
+    // Ask for the farm's details right after the outline is finished.
+    setSheetView("setup");
+    setSheet("full");
   }, [poly, activeId]);
-
-  // The question belongs to one new farm: drop it if the farmer moves on to another farm.
-  useEffect(() => {
-    if (lotPrompt !== null && lotPrompt !== activeId) setLotPrompt(null);
-  }, [lotPrompt, activeId]);
-  useEffect(() => {
-    if (postPrompt !== null && postPrompt !== activeId) setPostPrompt(null);
-  }, [postPrompt, activeId]);
 
   // Leaving the Set up form drops any plot drawing in progress.
   useEffect(() => {
@@ -2676,44 +2425,11 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
   }
 
   // "Next" on the Set up farm screen: save the answers on the farm and show its dashboard.
-  function saveSetup(patch: {
-    name: string;
-    location: string;
-    details: FarmDetails;
-    plots: Plot[];
-    lotState: LotState | null;
-    postHarvest: PostHarvest | null;
-  }) {
-    setFarms((prev) =>
-      prev.map((f) =>
-        f.id === activeId
-          ? { ...f, ...patch, lotState: patch.lotState ?? undefined, postHarvest: patch.postHarvest ?? undefined }
-          : f,
-      ),
-    );
+  function saveSetup(patch: { name: string; location: string; details: FarmDetails; plots: Plot[] }) {
+    setFarms((prev) => prev.map((f) => (f.id === activeId ? { ...f, ...patch } : f)));
     setSelectedPlotId(null);
     setSheetView("dashboard");
     setSheet("half");
-    // A newly harvested lot with no plan yet: ask what happens next.
-    if (patch.lotState === "harvested" && !patch.postHarvest && activeId) setPostPrompt(activeId);
-  }
-
-  // The farmer picked rest, yield crop or cover crop for the harvested lot.
-  function choosePostHarvest(choice: PostHarvest) {
-    const id = postPrompt;
-    setPostPrompt(null);
-    if (!id) return;
-    setFarms((prev) => prev.map((f) => (f.id === id ? { ...f, postHarvest: choice } : f)));
-  }
-
-  // The farmer said what is on the lot: remember it on the farm, then open the Set up form.
-  function chooseLotState(state: LotState) {
-    const id = lotPrompt;
-    setLotPrompt(null);
-    if (!id) return;
-    setFarms((prev) => prev.map((f) => (f.id === id ? { ...f, lotState: state } : f)));
-    setSheetView("setup");
-    setSheet("full");
   }
 
   // Plot outlining: hide the form, let the farmer tap the plot's corners, then bring the form back.
@@ -3012,8 +2728,6 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
         <PlotCard
           plot={selectedPlot}
           index={shownPlots.indexOf(selectedPlot)}
-          lot={activeFarm?.lotState}
-          post={activeFarm?.postHarvest}
           onEdit={openEditDetails}
           onClose={() => setSelectedPlotId(null)}
         />
@@ -3437,41 +3151,6 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
             <button className="welcome-btn" onClick={startNewFarm}>
               Add a new farm
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* right after a farm outline is finished: what is on the lot? */}
-      {lotPrompt !== null && lotPrompt === activeId && (
-        <div className="welcome-backdrop">
-          <div className="welcome-card" role="dialog" aria-modal="true" aria-labelledby="lot-title">
-            <h2 id="lot-title">What is on your lot?</h2>
-            <p>Tell us the state of your field right now, so we can ask the right questions next.</p>
-            <div className="lot-options">
-              {LOT_STATES.map((o) => (
-                <button key={o.value} type="button" className="lot-btn" onClick={() => chooseLotState(o.value)}>
-                  <b>{o.label}</b>
-                  <span>{o.hint}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* after the Set up form of a newly harvested lot: rest, yield crop or cover crop? */}
-      {postPrompt !== null && postPrompt === activeId && (
-        <div className="welcome-backdrop">
-          <div className="welcome-card" role="dialog" aria-modal="true" aria-labelledby="post-title">
-            <h2 id="post-title">Post-harvest options</h2>
-            <div className="lot-options">
-              {POST_HARVEST.map((o) => (
-                <button key={o.value} type="button" className="lot-btn" onClick={() => choosePostHarvest(o.value)}>
-                  <b>{o.label}</b>
-                  <span>{o.hint}</span>
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       )}
