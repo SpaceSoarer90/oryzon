@@ -1,17 +1,16 @@
 /* Plan next season: the spec's recommendation flow (AGENT-README.md §3, §6).
    Previous Farm Record -> branch selector -> planting date -> top-3 lists -> Yields.
-   Top-3 lists display ascending: rank 3, rank 2, rank 1 (best last), with rank badges.
+   Top-3 lists display best first: rank 1, rank 2, rank 3, with rank badges.
    "percent of ideal" is relative yield (RY) — the term RY never appears in the UI.
    Absolute yields are never summed (rule 4): the end screen shows separate figures. */
 import { useEffect, useRef, useState } from "react";
 import { centroid, loadStore, type Farm } from "./map";
-import { fetchCandidates, fetchExperiments, getRecommendation, startRecommendation } from "./api";
+import { fetchCandidates, fetchExperiments, getRecommendation, startRecommendation, HttpError } from "./api";
 import type { Branch, Candidates, CropEntry, ExperimentPreset, RecommendationResult, RangeStat, VarietyEntry } from "./types";
 
 const BRANCHES: { value: Branch; label: string; hint: string }[] = [
   { value: "rice", label: "Rice", hint: "Which rice variety to plant next" },
   { value: "yield_crops", label: "A crop before rice", hint: "Compare crops for the season before rice" },
-  { value: "monggo", label: "Monggo cover crop", hint: "Rice after a mung bean cover crop" },
 ];
 
 // Spec §4: the fixed label for the soil net-change block.
@@ -34,6 +33,22 @@ function kg(v: number | null | undefined) {
   return v == null ? "—" : `${Math.round(v).toLocaleString("en-US")} kg DM/ha`;
 }
 
+// Waits `ms`, or less if `signal` is aborted.
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const t = window.setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => { window.clearTimeout(t); resolve(); }, { once: true });
+  });
+}
+function clock(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+const POLL_MS = 2000;           // how often a running simulation is checked (one check at a time, never overlapping)
+const MAX_FAILS = 8;            // this many checks in a row without an answer (about 2 minutes) and we stop and say so
+const STALL_HINT_MS = 90_000;   // still at 0 runs after this long: explain why
+
 type Phase =
   | { kind: "form" }
   | { kind: "running"; runId: string; label: string }
@@ -55,7 +70,12 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
   const [progress, setProgress] = useState<{ done: number; total: number | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false); // waiting for the service to accept the request
-  const poll = useRef<number | null>(null);
+  const runCtl = useRef<AbortController | null>(null);   // stops the checking loop of the current run
+  const startCtl = useRef<AbortController | null>(null);  // stops the "start the run" request
+  const backTo = useRef<Phase>({ kind: "form" });         // where to return if a run fails or is cancelled
+  // what the running screen shows: the service's own status ("waiting" = no answer yet), when it began, failed checks
+  const [runInfo, setRunInfo] = useState<{ status: "waiting" | "queued" | "running"; startedAt: number; fails: number } | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   const farm: Farm | null = store.farms.find((f) => f.id === farmId) ?? null;
   const preset = presets.find((x) => x.id === experimentId) ?? null;
@@ -63,12 +83,21 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
   const effectiveEstablishment = preset ? preset.establishment : establishment;
 
   useEffect(() => {
+    // The service sleeps when idle and can take a minute to wake: keep trying instead of giving up on the first miss.
     const c = new AbortController();
-    fetchCandidates(c.signal)
-      .then(setCands)
-      .catch((e) => {
-        if (!c.signal.aborted) setCandsError(String(e?.message ?? e));
-      });
+    (async () => {
+      for (let attempt = 0; attempt < 8 && !c.signal.aborted; attempt++) {
+        try {
+          setCands(await fetchCandidates(c.signal));
+          setCandsError(null);
+          return;
+        } catch (e) {
+          if (c.signal.aborted) return;
+          setCandsError(String((e as Error)?.message ?? e));
+          await sleep(5000, c.signal);
+        }
+      }
+    })();
     return () => c.abort();
   }, []);
   useEffect(() => {
@@ -79,31 +108,98 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
       .catch(() => { /* no picker */ });
     return () => c.abort();
   }, []);
-  useEffect(() => () => { if (poll.current) window.clearInterval(poll.current); }, []);
+  useEffect(() => () => { runCtl.current?.abort(); startCtl.current?.abort(); }, []);
 
+  // A clock for the "elapsed" time, only while a run is on screen.
+  useEffect(() => {
+    if (phase.kind !== "running") return;
+    setNow(Date.now());
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [phase.kind]);
+
+  function stopWatching() {
+    runCtl.current?.abort();
+    runCtl.current = null;
+  }
+
+  // Stop, go back to the screen the farmer came from, and say what happened.
+  function failRun(message: string) {
+    stopWatching();
+    setError(message);
+    setProgress(null);
+    setRunInfo(null);
+    setPhase(backTo.current);
+  }
+
+  function cancelRun() {
+    stopWatching();
+    setError(null);
+    setProgress(null);
+    setRunInfo(null);
+    setPhase(backTo.current);
+  }
+
+  // Checks the run one request at a time (the old version fired a new request every 1.5 s even when the last had not
+  // come back, which piled requests onto a slow free server). Transient misses are tolerated; a lost run or a long
+  // silence is reported instead of spinning forever.
   function watch(runId: string, after: (r: RecommendationResult) => void) {
-    if (poll.current) window.clearInterval(poll.current);
-    poll.current = window.setInterval(() => {
-      getRecommendation(runId)
-        .then((st) => {
+    stopWatching();
+    const ctl = new AbortController();
+    runCtl.current = ctl;
+    const startedAt = Date.now();
+    setRunInfo({ status: "waiting", startedAt, fails: 0 });
+    (async () => {
+      let fails = 0;
+      while (!ctl.signal.aborted) {
+        try {
+          const st = await getRecommendation(runId, ctl.signal);
+          if (ctl.signal.aborted) return;
+          fails = 0;
           setProgress(st.progress);
-          if (st.status === "done" && st.result) {
-            if (poll.current) window.clearInterval(poll.current);
-            after(st.result);
-          } else if (st.status === "failed") {
-            if (poll.current) window.clearInterval(poll.current);
-            setError(st.error ?? "The recommendation run failed.");
-            setPhase({ kind: "form" });
+          if (st.status === "done") {
+            if (st.result) {
+              stopWatching();
+              setRunInfo(null);
+              after(st.result);
+            } else {
+              failRun("The simulation finished but returned no result. Please try again.");
+            }
+            return;
           }
-        })
-        .catch(() => { /* transient network hiccup: keep polling */ });
-    }, 1500);
+          if (st.status === "failed") {
+            failRun(st.error ?? "The recommendation run failed.");
+            return;
+          }
+          setRunInfo({ status: st.status === "queued" ? "queued" : "running", startedAt, fails: 0 });
+        } catch (e) {
+          if (ctl.signal.aborted) return;
+          if (e instanceof HttpError && e.status === 404) {
+            // The service no longer knows this run: it restarted (free servers do) and runs are kept in memory.
+            failRun("The simulation service restarted and lost this run. Please start it again.");
+            return;
+          }
+          fails += 1;
+          setRunInfo((prev) => (prev ? { ...prev, fails } : prev));
+          if (fails >= MAX_FAILS) {
+            failRun("Lost contact with the simulation service. Wait a minute for it to wake up, then try again.");
+            return;
+          }
+        }
+        await sleep(POLL_MS, ctl.signal);
+      }
+    })();
   }
 
   function launch(preCrop?: string) {
-    if (!farm || !pdate) return;
+    if (!farm || !pdate || starting) return;
     setError(null);
     setStarting(true);
+    // If this run fails or is cancelled, return to where the farmer is now (the crop choice, or the form).
+    backTo.current = phase.kind === "crops" ? phase : { kind: "form" };
+    startCtl.current?.abort();
+    const ctl = new AbortController();
+    startCtl.current = ctl;
     const [lat, lng] = centroid(farm.points);
     startRecommendation({
       farm: { lat, lon: lng, establishment: effectiveEstablishment },
@@ -111,8 +207,9 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
       planting_date: pdate,
       ...(preCrop ? { pre_crop: preCrop } : {}),
       ...(experimentId ? { experiment_id: experimentId } : {}),
-    })
+    }, ctl.signal)
       .then(({ run_id }) => {
+        if (ctl.signal.aborted) return;
         setProgress(null);
         setPhase({
           kind: "running",
@@ -128,11 +225,18 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
           }
         });
       })
-      .catch((e) => setError(String(e?.message ?? e)))
+      .catch((e) => {
+        if (!ctl.signal.aborted) setError(String(e?.message ?? e));
+      })
       .finally(() => setStarting(false));
   }
 
-  const ascending = (list: VarietyEntry[]) => [...list].sort((a, b) => b.rank - a.rank);
+  // The service wants the crop's id exactly as listed in /api/candidates (for example "corn", not "Corn").
+  // Match the name from the results to that list, ignoring upper/lower case; fall back to the name as given.
+  const preCropId = (name: string) =>
+    cands?.yield_crops.find((id) => id.trim().toLowerCase() === name.trim().toLowerCase()) ?? name;
+
+  const byRank = (list: VarietyEntry[]) => [...list].sort((a, b) => a.rank - b.rank);
 
   return (
     <>
@@ -184,17 +288,19 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
                 ))}
               </fieldset>
 
-              <fieldset className="plan-radios">
-                <legend>How will the rice be established?</legend>
-                <label className="plan-radio">
-                  <input type="radio" name="est" disabled={!!preset} checked={effectiveEstablishment === "T"} onChange={() => setEstablishment("T")} />
-                  <span><b>Transplanted</b></span>
-                </label>
-                <label className="plan-radio">
-                  <input type="radio" name="est" disabled={!!preset} checked={effectiveEstablishment === "DS"} onChange={() => setEstablishment("DS")} />
-                  <span><b>Direct-seeded</b></span>
-                </label>
-              </fieldset>
+              {branch === "rice" && (
+                <fieldset className="plan-radios">
+                  <legend>How will the rice be established?</legend>
+                  <label className="plan-radio">
+                    <input type="radio" name="est" disabled={!!preset} checked={effectiveEstablishment === "T"} onChange={() => setEstablishment("T")} />
+                    <span><b>Transplanted</b></span>
+                  </label>
+                  <label className="plan-radio">
+                    <input type="radio" name="est" disabled={!!preset} checked={effectiveEstablishment === "DS"} onChange={() => setEstablishment("DS")} />
+                    <span><b>Direct-seeded</b></span>
+                  </label>
+                </fieldset>
+              )}
 
               {presets.length > 0 && (
                 <label className="plan-field">
@@ -227,7 +333,7 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
                 {cands
                   ? `Simulating with ${cands.rice_varieties.length} rice variety(ies), ${cands.yield_crops.length} calibrated crop(s).`
                   : "Checking what is calibrated on the service…"}
-                {candsError && <> Could not reach the recommendation service: {candsError}</>}
+                {candsError && !cands && <> Could not reach the recommendation service yet ({candsError}). It may be waking up, so we keep trying.</>}
               </p>
 
               <button className="plan-run" type="submit" disabled={!farm || !pdate || starting} aria-busy={starting}>
@@ -249,25 +355,49 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
         </form>
       )}
 
-      {phase.kind === "running" && (
-        <div className="plan-running" role="status">
-          <span className="spinner" aria-hidden="true" />
-          <p>{phase.label}</p>
-          {progress && (
-            <p className="plan-progress">
-              {progress.done}{progress.total != null ? ` of ${progress.total}` : ""} simulation runs
-            </p>
-          )}
-          <p className="plan-note">Real crop-model runs; this can take a while.</p>
-        </div>
-      )}
+      {phase.kind === "running" && (() => {
+        const elapsed = runInfo ? now - runInfo.startedAt : 0;
+        const done = progress?.done ?? 0;
+        const stalled = elapsed > STALL_HINT_MS && done === 0;
+        const headline =
+          !runInfo || runInfo.status === "waiting"
+            ? "Contacting the simulation service…"
+            : runInfo.status === "queued"
+              ? "Waiting for the simulation to start…"
+              : phase.label;
+        return (
+          <div className="plan-running" role="status">
+            <span className="spinner" aria-hidden="true" />
+            <p>{headline}</p>
+            {progress && progress.total != null && progress.total > 0 ? (
+              <>
+                <progress className="plan-bar" max={progress.total} value={done} aria-label="Simulation progress" />
+                <p className="plan-progress">{done} of {progress.total} simulation runs</p>
+              </>
+            ) : (
+              <p className="plan-progress">{done} simulation runs finished</p>
+            )}
+            <p className="plan-raw">Time so far: {clock(elapsed)}</p>
+            {runInfo && runInfo.fails > 0 && (
+              <p className="plan-note">Having trouble reaching the service (try {runInfo.fails} of {MAX_FAILS}). Still trying…</p>
+            )}
+            {stalled && (!runInfo || runInfo.fails === 0) && (
+              <p className="plan-note">
+                Still working. The service may be waking up or finishing an earlier run, and the first crop-model runs are the slowest. You can keep this open.
+              </p>
+            )}
+            <p className="plan-note">Real crop-model runs; this can take a few minutes.</p>
+            <button type="button" className="plan-run secondary" onClick={cancelRun}>Cancel</button>
+          </div>
+        );
+      })()}
 
       {phase.kind === "crops" && (
         <div className="plan-step">
           <h2>Top 3 crops to plant before rice</h2>
           <p className="plan-note">Compared as percent of each crop's own ideal yield.</p>
           <ol className="plan-ranks">
-            {[...phase.result.crops ?? []].sort((a, b) => b.rank - a.rank).map((c: CropEntry) => (
+            {[...phase.result.crops ?? []].sort((a, b) => a.rank - b.rank).map((c: CropEntry) => (
               <li key={c.crop} className="plan-entry">
                 <span className="plan-badge" aria-label={`Rank ${c.rank}`}>#{c.rank}</span>
                 <div>
@@ -281,11 +411,18 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
           <h3 className="plan-ask">Which crop will you plant?</h3>
           <div className="plan-choices">
             {(phase.result.crops ?? []).map((c) => (
-              <button key={c.crop} type="button" className="plan-choice" onClick={() => launch(c.crop)}>
+              <button key={c.crop} type="button" className="plan-choice" disabled={starting} aria-busy={starting} onClick={() => launch(preCropId(c.crop))}>
                 <span className="plan-badge" aria-label={`Rank ${c.rank}`}>#{c.rank}</span> {c.crop}
               </button>
             ))}
           </div>
+          {starting && (
+            <p className="plan-note" role="status">
+              <span className="spinner" aria-hidden="true" />
+              Starting the simulation…
+            </p>
+          )}
+          {error && <p className="plan-error" role="alert">{error}</p>}
           <ResultMetaFooter result={phase.result} />
           <button type="button" className="plan-run secondary" onClick={() => setPhase({ kind: "form" })}>
             Start over
@@ -304,7 +441,7 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
               {phase.result.varieties[0].pre_crop.type === "cover" ? " of aboveground biomass" : ""}
             </p>
           )}
-          <VarietyList varieties={ascending(phase.result.varieties)} />
+          <VarietyList varieties={byRank(phase.result.varieties)} />
           <ResultNotes result={phase.result} />
           <button type="button" className="plan-run" onClick={() => setPhase({ kind: "yields", result: phase.result })}>
             See yields

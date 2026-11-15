@@ -4799,3 +4799,47 @@ body {
     max-width: 480px;
   }
 }
+
+/* ---------- Set up farm: full-width olive header ---------- */
+/* The Set up screen puts the class "setup" on the header, the scrolling area and the form. The shared rule
+   `.setup { max-width: 520px; margin: 0 auto }` (meant for the form) also narrowed the header and the scroll area
+   to 520px, so on a wider sheet the olive header stopped short of the sheet's edges and the scrollbar floated
+   inside it. Only the form keeps the 520px column. */
+.sheet-head.setup,
+.sheet-body.setup {
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
+}
+/* ---------- Plan next season: progress while the simulation runs ---------- */
+.plan-bar {
+  width: 100%;
+  max-width: 320px;
+  height: 12px;
+  border: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #e3e9d2;
+  accent-color: var(--olive-dark);
+}
+.plan-bar::-webkit-progress-bar {
+  background: #e3e9d2;
+  border-radius: 6px;
+}
+.plan-bar::-webkit-progress-value {
+  background: var(--olive-dark);
+  border-radius: 6px;
+  transition: width 0.3s ease;
+}
+.plan-bar::-moz-progress-bar {
+  background: var(--olive-dark);
+  border-radius: 6px;
+}
+.plan-running .plan-run.secondary {
+  width: 100%;
+  max-width: 320px;
+}
+.plan-choice:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

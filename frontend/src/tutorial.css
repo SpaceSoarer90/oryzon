@@ -1,0 +1,198 @@
+/* Guided tour. Sits above the map, the menu and every dialog (max z-index in styles.css is about 2600)
+   but under the splash (9999), so it is already in place when the splash fades out.
+   The dimmed area is the box-shadow of .tour-hole, so the real control inside the hole stays bright. */
+.tour {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  color: var(--ink, #2b1a0c);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* swallows taps so nothing underneath changes while the tour is open */
+  cursor: default;
+}
+.tour-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 28, 20, 0.68);
+}
+.tour-hole {
+  position: absolute;
+  border-radius: 16px;
+  pointer-events: none;
+  box-shadow:
+    0 0 0 9999px rgba(20, 28, 20, 0.68),
+    0 0 0 3px #fff,
+    0 0 0 7px rgba(46, 158, 91, 0.9);
+  transition: left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease;
+}
+
+/* ---------- the card ---------- */
+.tour-card {
+  position: absolute;
+  box-sizing: border-box;
+  padding: 12px 16px 14px;
+  border-radius: 22px;
+  background: var(--cream, #ecf3dc);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
+  transition: left 0.2s ease, top 0.2s ease;
+}
+.tour-logo {
+  display: block;
+  height: 38px;
+  width: auto;
+  margin: 0 0 6px;
+}
+.tour-logo-text {
+  margin: 0 0 6px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--olive-dark, #737a33);
+}
+.tour-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--olive-dark, #737a33);
+}
+.tour-skip {
+  min-height: 36px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--olive-dark, #737a33);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.tour-progress {
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(115, 122, 51, 0.22);
+  overflow: hidden;
+}
+.tour-progress span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--green, #2e9e5b);
+  transition: width 0.25s ease;
+}
+.tour-title {
+  margin: 12px 0 4px;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 21px;
+  line-height: 1.2;
+  font-weight: 700;
+  outline: none;
+}
+.tour-body {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+}
+.tour-note {
+  margin: 8px 0 0;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: #fff0dc;
+  color: #8a5200;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+/* ---------- warm-up status ---------- */
+.tour-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border, #d3dcbd);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted, #6b7a70);
+}
+.tour-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tour-dot i {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--olive-deep, #a2a85c);
+  border-top-color: transparent;
+  animation: tour-spin 0.8s linear infinite;
+}
+.tour-dot.ok i {
+  animation: none;
+  border: 0;
+  background: var(--green, #2e9e5b);
+}
+.tour-slow {
+  flex-basis: 100%;
+  color: #8a5200;
+}
+
+/* ---------- buttons ---------- */
+.tour-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+}
+.tour-btn {
+  min-height: 44px;
+  padding: 0 20px;
+  border: 1.5px solid var(--olive-deep, #a2a85c);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink, #2b1a0c);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.tour-btn-primary {
+  min-width: 112px;
+  border-color: var(--green, #2e9e5b);
+  background: var(--green, #2e9e5b);
+  color: #fff;
+}
+.tour-btn:focus-visible,
+.tour-skip:focus-visible {
+  outline: 3px solid rgba(46, 158, 91, 0.6);
+  outline-offset: 2px;
+}
+.tour-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@keyframes tour-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-hole,
+  .tour-card,
+  .tour-progress span {
+    transition: none;
+  }
+  .tour-dot i {
+    animation-duration: 2.4s;
+  }
+}

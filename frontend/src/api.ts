@@ -5,6 +5,8 @@ import type { LatLng, DayData, DayGrid, GridMeta, MetricKey, Bounds, Branch, Can
 const API = ((import.meta.env.VITE_API_URL as string | undefined) ?? "https://oryzon-wyyo.onrender.com").replace(/\/$/, "");
 const SIM_API = ((import.meta.env.VITE_SIM_API_URL as string | undefined) ?? "https://oryzon-sim.onrender.com").replace(/\/$/, "");
 
+export const apiHealthUrl = `${API}/health`;
+
 // Leaflet uses [lat, lng]; GeoJSON uses [lng, lat] and the ring must be closed.
 export function toGeoJSONPolygon(points: LatLng[]): GeoJSON.Polygon {
   const ring = points.map(([lat, lng]) => [lng, lat]);
@@ -12,12 +14,45 @@ export function toGeoJSONPolygon(points: LatLng[]): GeoJSON.Polygon {
   return { type: "Polygon", coordinates: [ring] };
 }
 
-async function getJSON<T>(url: string, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(url, { signal });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail ?? `Request failed (${res.status})`);
+// An error that remembers the HTTP status, so callers can tell "not found" (404) from "server busy" (5xx).
+export class HttpError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "HttpError";
+    this.status = status;
   }
+}
+
+// fetch() that gives up after `ms` (and still stops when the caller's own `signal` aborts).
+// Free servers can go quiet while they wake up; without a limit a request can hang for minutes.
+async function fetchWithTimeout(url: string, init: RequestInit, ms: number | undefined, outer?: AbortSignal): Promise<Response> {
+  if (!ms) return fetch(url, { ...init, signal: outer });
+  const ctl = new AbortController();
+  let timedOut = false;
+  const timer = window.setTimeout(() => { timedOut = true; ctl.abort(); }, ms);
+  const onAbort = () => ctl.abort();
+  outer?.addEventListener("abort", onAbort, { once: true });
+  try {
+    return await fetch(url, { ...init, signal: ctl.signal });
+  } catch (e) {
+    if (timedOut) throw new Error("The service took too long to answer.");
+    throw e;
+  } finally {
+    window.clearTimeout(timer);
+    outer?.removeEventListener("abort", onAbort);
+  }
+}
+
+async function failure(res: Response): Promise<HttpError> {
+  const body = await res.json().catch(() => null);
+  const detail = typeof body?.detail === "string" ? body.detail : null;
+  return new HttpError(detail ?? `Request failed (${res.status})`, res.status);
+}
+
+async function getJSON<T>(url: string, signal?: AbortSignal, timeoutMs?: number): Promise<T> {
+  const res = await fetchWithTimeout(url, {}, timeoutMs, signal);
+  if (!res.ok) throw await failure(res);
   return res.json();
 }
 
@@ -59,8 +94,9 @@ export const fetchHeatmapBounds = (layer: MetricKey, signal?: AbortSignal) =>
 export const simHealthUrl = `${SIM_API}/health`;
 
 export const fetchCandidates = (signal?: AbortSignal) =>
-  getJSON<Candidates>(`${SIM_API}/api/candidates`, signal);
+  getJSON<Candidates>(`${SIM_API}/api/candidates`, signal, 30_000);
 
+// Optional management presets for the "Farming practice" picker on the Plan screen.
 export const fetchExperiments = (signal?: AbortSignal) =>
   getJSON<{ experiments: ExperimentPreset[] }>(`${SIM_API}/api/experiments`, signal);
 
@@ -74,18 +110,17 @@ export async function startRecommendation(
   },
   signal?: AbortSignal,
 ): Promise<{ run_id: string }> {
-  const res = await fetch(`${SIM_API}/api/recommendations`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+  // 90 s: enough for a sleeping free server to wake up, but not forever.
+  const res = await fetchWithTimeout(
+    `${SIM_API}/api/recommendations`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+    90_000,
     signal,
-  });
-  if (!res.ok) {
-    const detail = await res.json().catch(() => null);
-    throw new Error(detail?.detail ?? `Request failed (${res.status})`);
-  }
+  );
+  if (!res.ok) throw await failure(res);
   return res.json();
 }
 
+// A status check must be quick: if one hangs, the caller counts it as a miss and tries again.
 export const getRecommendation = (runId: string, signal?: AbortSignal) =>
-  getJSON<RecRunStatus>(`${SIM_API}/api/recommendations/${runId}`, signal);
+  getJSON<RecRunStatus>(`${SIM_API}/api/recommendations/${runId}`, signal, 20_000);

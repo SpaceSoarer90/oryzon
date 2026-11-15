@@ -14,6 +14,7 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import { PlanNext } from "./recommend";
+import { Tutorial, TOUR_REPLAY_EVENT, type TourControl, type TourScene } from "./tutorial";
 import type { Advice, Bounds, DayData, GridMeta, GridPoint, LatLng, MetricKey } from "./types";
 import { fetchDay, fetchHeatmapBounds, heatmapUrl, fetchMeta, fetchRegionData, toGeoJSONPolygon } from "./api";
 import temperatureIcon from "./assets/temperature.png";
@@ -800,20 +801,23 @@ function MapLegend({ layer }: { layer: MetricKey }) {
   );
 }
 
-// Small card over the map: which day is shown, and a way to leave or open past data. The slider itself lives in the
-// Dashboard (so it never covers the reading tiles). The colour scale of the selected layer sits under the date.
+// Small card over the map: which day is shown, the slider for past days, and the colour scale of the selected layer.
 function MapTimeline({
   dates,
   day,
   layer,
   monthly,
+  pastMode,
   onPast,
+  onDay,
 }: {
   dates: string[];
   day: number;
   layer: MetricKey | null;
   monthly: boolean;
+  pastMode: boolean;
   onPast: (open: boolean) => void;
+  onDay: (i: number) => void;
 }) {
   const last = dates.length - 1;
   const idx = Math.min(day, last);
@@ -825,18 +829,41 @@ function MapTimeline({
       ? "Latest data"
       : `${behind} day${behind === 1 ? "" : "s"} before the latest`;
   return (
-    <div className="map-timeline" role="group" aria-label="Day shown">
+    <div className="map-timeline" role="group" aria-label="Day shown" data-tour="timeline">
       <div className="tl-head">
-        <div className="tl-date tl-date-left" aria-live="polite">
+        {pastMode && last > 0 && (
+          <button type="button" className="tl-step" aria-label="Previous day" disabled={idx <= 0} onClick={() => onDay(idx - 1)}>
+            ‹
+          </button>
+        )}
+        <div className={`tl-date ${pastMode ? "" : "tl-date-left"}`} aria-live="polite">
           {shortDate(date)}
           <small>{sub}</small>
         </div>
+        {pastMode && last > 0 && (
+          <button type="button" className="tl-step" aria-label="Next day" disabled={idx >= last} onClick={() => onDay(idx + 1)}>
+            ›
+          </button>
+        )}
         {last > 0 && (
-          <button type="button" className="tl-latest" onClick={() => onPast(behind === 0)}>
-            {behind === 0 ? "Past data" : "Latest"}
+          <button type="button" className="tl-latest" onClick={() => onPast(!pastMode)}>
+            {pastMode ? "Latest" : "Past data"}
           </button>
         )}
       </div>
+      {pastMode && last > 0 && (
+        <input
+          className="tl-range"
+          type="range"
+          min={0}
+          max={last}
+          value={idx}
+          aria-label="Day"
+          aria-valuetext={shortDate(date)}
+          style={{ "--pct": `${(idx / (last || 1)) * 100}%` } as React.CSSProperties}
+          onChange={(e) => onDay(Number(e.target.value))}
+        />
+      )}
       {layer && <MapLegend layer={layer} />}
     </div>
   );
@@ -1602,7 +1629,7 @@ function YieldChart({ farm }: { farm: Farm }) {
 
 // ---- Crop guide: crops the farmer can consider for coming seasons ----
 // Crop photos: put these files in src/assets (or any folder inside it): Maize, Potato, Soybean, Cabbage, Tomato,
-// Sugarcane, Dry_Bean and Mungbean, as .png, .jpg or .webp. Capital letters do not matter.
+// Sugarcane and Dry_Bean, as .png, .jpg or .webp. Capital letters do not matter.
 const cropFiles = import.meta.glob("./assets/**/*.{png,jpg,jpeg,webp}", { eager: true, query: "?url", import: "default" }) as Record<string, string>;
 const CROP_FILE: Record<string, string> = {
   maize: "Maize",
@@ -1612,7 +1639,6 @@ const CROP_FILE: Record<string, string> = {
   tomato: "Tomato",
   sugarcane: "Sugarcane",
   dry_bean: "Dry_Bean",
-  mungbean: "Mungbean",
 };
 
 interface CropGuideItem {
@@ -1634,25 +1660,6 @@ const CROP_GUIDE: CropGuideItem[] = [
   { key: "tomato", name: "Tomato", role: "yield", growing: "100-130 days", decreases: "Nitrogen level and soil pH level", increases: "Soil salinity", neutral: "Soil organic carbon" },
   { key: "sugarcane", name: "Sugarcane", role: "yield", growing: "270-365 days or longer", decreases: "Nitrogen, Phosphorus, Potassium", increases: "Organic Carbon", neutral: "Soil pH" },
   { key: "dry_bean", name: "Dry Bean", role: "yield", growing: "90-120 days", decreases: "Phosphorus, Potassium", increases: "Nitrogen, Organic Carbon", neutral: "Soil pH" },
-  {
-    key: "mungbean",
-    name: "Mungbean",
-    role: "cover",
-    growing: "100-130 days",
-    guide: {
-      intro: "Mungbean is an easy cover crop to grow, and it looks after your soil while your fields rest. Here is how to do it:",
-      steps: [
-        { title: "Clear the ground", text: "Pull out the weeds and loosen the soil so the roots can spread easily." },
-        { title: "Sow the seeds", text: "Plant them in shallow holes or in rows, about 2\u20133 cm deep." },
-        { title: "Keep the soil moist", text: "Water regularly, especially in the first days, so the seeds sprout well." },
-        { title: "Let it grow", text: "Give the plants time to grow full and leafy. That leafy growth is what feeds your soil." },
-        { title: "Cut it down before the pods ripen", text: "Cut the plants once they have grown plenty of leaves but before the pods fully develop." },
-        { title: "Leave it in the field", text: "Leave the roots and the cut plants on the soil. As they break down, they give back organic matter and nitrogen." },
-      ],
-      bestFor: "Warm, tropical parts of the Philippines, planted in the gap between your main cropping seasons.",
-      mainBenefit: "Mungbean pulls nitrogen from the air and stores it in the soil, which can give your next crop more to work with.",
-    },
-  },
 ];
 
 function cropPhoto(key: string): string {
@@ -2392,6 +2399,28 @@ function useMid() {
   return mid;
 }
 
+// ---------- guided tour support ----------
+// Used only when the farmer has no farm yet, so the tour can show the farm screens. Never saved (see the
+// persist effect). Move these corners onto a paddy near you if the sample ever lands on water.
+const DEMO_ID = "tour-sample-farm";
+const DEMO_POINTS: LatLng[] = [
+  [16.1521, 119.9852],
+  [16.1521, 119.9874],
+  [16.1505, 119.9874],
+  [16.1505, 119.9852],
+];
+// Scenes that need a farm on the map.
+const FARM_SCENES: TourScene[] = ["readings", "reading", "sheet", "dashboard", "past", "plan", "crops", "farms", "edit"];
+const SCENE_SHEET: Partial<Record<TourScene, "peek" | "half" | "full">> = {
+  sheet: "half",
+  dashboard: "half",
+  past: "half",
+  plan: "full",
+  crops: "full",
+  farms: "full",
+  edit: "full",
+};
+
 export function FarmMap() {
   // Farms saved on earlier visits (empty the first time).
   const [initial] = useState(loadStore);
@@ -2533,7 +2562,11 @@ export function FarmMap() {
   // Remember the farms in this browser.
   useEffect(() => {
     try {
-      localStorage.setItem(FARMS_KEY, JSON.stringify({ farms, activeId }));
+      // the tour's sample farm is never saved
+      localStorage.setItem(
+        FARMS_KEY,
+        JSON.stringify({ farms: farms.filter((f) => f.id !== DEMO_ID), activeId: activeId === DEMO_ID ? null : activeId }),
+      );
     } catch {
       /* storage unavailable: farms just won't be remembered */
     }
@@ -2564,19 +2597,32 @@ export function FarmMap() {
   useEffect(() => () => window.clearTimeout(undoTimer.current), []);
 
   // Load each layer's dates and the corners its heat map image is pinned to (again after "Try again").
+  // One layer at a time, and the two requests for a layer together: the server keeps only ONE layer in memory,
+  // so asking for all of them at once made it throw a layer away and re-read it from disk again and again.
+  // In this order the first layer's days (which fill the slider) also arrive first instead of last.
   useEffect(() => {
     const controller = new AbortController();
     const onError = (e: Error) => {
       if (e.name !== "AbortError") setGridError(e.message || "Request failed");
     };
-    METRICS.forEach((m) => {
-      fetchMeta(m.key, controller.signal)
-        .then((meta) => setMetas((prev) => ({ ...prev, [m.key]: meta })))
-        .catch(onError);
-      fetchHeatmapBounds(m.key, controller.signal)
-        .then((b) => setHeatBounds((prev) => ({ ...prev, [m.key]: b })))
-        .catch(onError);
-    });
+    (async () => {
+      for (const m of METRICS) {
+        if (controller.signal.aborted) return;
+        try {
+          const meta = await fetchMeta(m.key, controller.signal);
+          setMetas((prev) => ({ ...prev, [m.key]: meta }));
+        } catch (e) {
+          onError(e as Error);
+        }
+        if (controller.signal.aborted) return;
+        try {
+          const b = await fetchHeatmapBounds(m.key, controller.signal);
+          setHeatBounds((prev) => ({ ...prev, [m.key]: b }));
+        } catch (e) {
+          onError(e as Error);
+        }
+      }
+    })();
     return () => controller.abort();
   }, [metaTry]);
 
@@ -2715,14 +2761,15 @@ export function FarmMap() {
   }
 
   // Show a saved farm on the map.
-  // Browse past days (opens the Dashboard, where the slider is) or go back to the latest day.
+  // Browse past days (the slider is in the map's day card) or go back to the latest day.
   function openPast(open: boolean) {
     setPastMode(open);
     if (!open) return;
-    setSheetView("dashboard");
-    setSheet((s) => (s === "peek" ? "half" : s));
+    setOpenMetric(null);
+    if (!wide) setSheet("peek"); // collapse the sheet so the map and readings stay visible
   }
 
+  // Show a saved farm on the map.
   function selectFarm(f: Farm) {
     setSelectedPlotId(null);
     setPastMode(false);
@@ -2903,6 +2950,69 @@ export function FarmMap() {
     setSheet("peek");
   }
 
+  // ---- guided tour: the tour asks for a "scene" and this puts the real screen into it ----
+  const demoRef = useRef(false); // the sample farm is on the map
+  const tourRef = useRef<{ scene: (s: TourScene) => void; end: () => void }>({ scene: () => {}, end: () => {} });
+  const tourCtl = useMemo<TourControl>(
+    () => ({ scene: (s) => tourRef.current.scene(s), end: () => tourRef.current.end() }),
+    [],
+  );
+
+  function tourScene(scene: TourScene) {
+    setWelcome(false);
+    setSelectedPlotId(null);
+    setPlotDraw(null);
+    setDrawing(false);
+    closeSearch();
+
+    if (FARM_SCENES.includes(scene) && !activeFarm) {
+      if (farms.length > 0) {
+        selectFarm(farms[0]);
+      } else {
+        demoRef.current = true;
+        setFarms([{ id: DEMO_ID, name: "Sample farm", points: DEMO_POINTS, location: "Sample location" }]);
+        setActiveId(DEMO_ID);
+        setPolygon({ closed: true, points: DEMO_POINTS });
+        setFitNonce((n) => n + 1);
+      }
+      // Opening a farm resets the sheet, so apply this scene again once that has settled.
+      window.setTimeout(() => tourRef.current.scene(scene), 120);
+      return;
+    }
+
+    setMenuOpen(scene === "menu");
+    setLayersOpen(scene === "layers" || scene === "timeline");
+    setLayer(scene === "timeline" ? "temperature" : null);
+    setOpenMetric(scene === "reading" ? "temperature" : null);
+    setPastMode(false);
+    setSheetView("dashboard");
+    setSheet(SCENE_SHEET[scene] ?? "peek");
+  }
+
+  // The tour is over (finished or skipped): remove the sample farm and put the screen back.
+  function tourEnd() {
+    setMenuOpen(false);
+    setLayersOpen(false);
+    setLayer(null);
+    setOpenMetric(null);
+    setPastMode(false);
+    setSheetView("dashboard");
+    if (demoRef.current) {
+      demoRef.current = false;
+      setFarms((prev) => prev.filter((f) => f.id !== DEMO_ID));
+      setActiveId(null);
+      setPolygon(EMPTY);
+      setData(null);
+      setError(null);
+      setSheet("peek");
+      setWelcome(true); // no farm yet: ask for the first one
+      mapRef.current?.setView(START_CENTER, START_ZOOM);
+    } else {
+      setSheet(poly.closed ? "half" : "peek");
+    }
+  }
+  tourRef.current = { scene: tourScene, end: tourEnd };
+
   // Dragging the handle: the sheet follows the finger, then settles on peek, half or full.
   function onHandleDown(e: React.PointerEvent<HTMLButtonElement>) {
     if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -3000,6 +3110,9 @@ export function FarmMap() {
   const sheetTitle =
     sheetView === "farms" ? "MY FARMS" : sheetView === "crops" ? "CROP GUIDE" : sheetView === "setup" ? "SET UP FARM" : sheetView === "plan" ? "PLAN NEXT SEASON" : sheetView === "dashboard" ? "DASHBOARD" : (activeFarm?.name ?? "Condition").toUpperCase();
   const viewClass = sheetView === "condition" ? "" : sheetView === "setup" ? "setup" : "banner";
+  // Declared before `busy` below, which reads `bounds` (a const used too early crashes with a ReferenceError).
+  const heatUrl = dataLayer && imageDate ? heatmapUrl(dataLayer, imageDate) : null;
+  const bounds = dataLayer ? heatBounds[dataLayer] : undefined;
   // True whenever the app is waiting on something: the farm's numbers, a map layer, a place search, the water check.
   const busy =
     loading ||
@@ -3007,8 +3120,6 @@ export function FarmMap() {
     checkingArea ||
     (!!dataLayer && (layerBusy || !bounds) && !gridError) ||
     (Object.keys(metas).length === 0 && !gridError);
-  const heatUrl = dataLayer && imageDate ? heatmapUrl(dataLayer, imageDate) : null;
-  const bounds = dataLayer ? heatBounds[dataLayer] : undefined;
 
   return (
     <div className={`app sheet-${sheet}`} ref={appRef}>
@@ -3089,6 +3200,7 @@ export function FarmMap() {
       <div className="topbar">
         <button
           className="menu-btn"
+          data-tour="menu-btn"
           aria-label="Menu"
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen(true)}
@@ -3096,6 +3208,7 @@ export function FarmMap() {
           <span /><span /><span />
         </button>
         <div
+          data-tour="search"
           className={`place-pill ${searchOpen ? "searching" : ""}`}
           onClick={(e) => {
             // a tap anywhere on the bar (not on one of its buttons) opens the search, or focuses the box
@@ -3288,13 +3401,15 @@ export function FarmMap() {
           day={day}
           layer={dataLayer}
           monthly={!!dataLayer && metas[dataLayer]?.period === "month"}
+          pastMode={pastMode}
           onPast={openPast}
+          onDay={setDay}
         />
       )}
 
       {/* today's readings, small tiles on the map */}
       {showConditions && !openMetric && (
-        <div className="conditions" role="group" aria-label="Readings for this day">
+        <div className="conditions" role="group" aria-label="Readings for this day" data-tour="readings">
           {readings.map((r) => {
             const mt = METRICS.find((x) => x.key === r.key)!;
             const f = formatReading(r.key, current?.[r.key]);
@@ -3328,7 +3443,7 @@ export function FarmMap() {
         const f = formatReading(openMetric, current?.[openMetric]);
         const st = statusOf(openMetric);
         return (
-          <div className="cond-pop" role="dialog" aria-label={`${mt.label} details`}>
+          <div className="cond-pop" role="dialog" aria-label={`${mt.label} details`} data-tour="reading">
             <div className="cond-pop-top">
               <div className="cond-tabs" role="tablist" aria-label="Reading">
                 {readings.map((r) => {
@@ -3375,7 +3490,7 @@ export function FarmMap() {
       })()}
 
       {/* layer picker */}
-      <div className={`layers ${layersOpen ? "" : "collapsed"}`}>
+      <div className={`layers ${layersOpen ? "" : "collapsed"}`} data-tour="layers">
         <div className="layers-stack">
           <button
             className="layers-toggle"
@@ -3422,6 +3537,7 @@ export function FarmMap() {
         )}
         <button
           className={`sheet-head ${viewClass}`}
+          data-tour="sheet-head"
           style={sheetView === "setup" && setupBg ? ({ "--setup-bg": `url(${setupBg})` } as React.CSSProperties) : undefined}
           onClick={() => {
             if (suppressClick.current) return; // this tap was the end of a drag
@@ -3470,6 +3586,7 @@ export function FarmMap() {
               <button
                 type="button"
                 className="plan-hero"
+                data-tour="plan"
                 onClick={() => {
                   setSheetView("plan");
                   setSheet("full");
@@ -3523,7 +3640,7 @@ export function FarmMap() {
                     <DataNotice message={friendlyError(gridError)} onRetry={retryLayers} />
                   )}
 
-                  <div className="dash-metrics">
+                  <div className="dash-metrics" data-tour="dash-metrics">
                     {readings.map((r) => {
                       const f = formatReading(r.key, current?.[r.key]);
                       return (
@@ -3562,38 +3679,17 @@ export function FarmMap() {
                   {dates && dates.length > 1 && (() => {
                     const lastI = dates.length - 1;
                     const i = Math.min(day, lastI);
-                    const behind = lastI - i;
                     return pastMode ? (
-                      <div className="dash-picker" role="group" aria-label="Choose a day">
-                        <div className="dp-head">
-                          <button type="button" className="dp-step" aria-label="Previous day" disabled={i <= 0} onClick={() => setDay(i - 1)}>
-                            ‹
-                          </button>
-                          <div className="dp-date" aria-live="polite">
-                            {shortDate(dates[i])}
-                            <small>{behind === 0 ? "Latest data" : `${behind} day${behind === 1 ? "" : "s"} before the latest`}</small>
-                          </div>
-                          <button type="button" className="dp-step" aria-label="Next day" disabled={i >= lastI} onClick={() => setDay(i + 1)}>
-                            ›
-                          </button>
-                        </div>
-                        <input
-                          className="tl-range dp-range"
-                          type="range"
-                          min={0}
-                          max={lastI}
-                          value={i}
-                          aria-label="Day"
-                          aria-valuetext={shortDate(dates[i])}
-                          style={{ "--pct": `${(i / (lastI || 1)) * 100}%` } as React.CSSProperties}
-                          onChange={(e) => setDay(Number(e.target.value))}
-                        />
-                        <button type="button" className="dash-past" onClick={() => setPastMode(false)}>
+                      <div className="dash-picker" role="group" aria-label="Past data">
+                        <p className="hint" style={{ margin: "0 0 8px" }}>
+                          Showing {shortDate(dates[i])}. Use the slider on the map to change the day.
+                        </p>
+                        <button type="button" className="dash-past" style={{ margin: 0 }} onClick={() => setPastMode(false)}>
                           Back to latest data
                         </button>
                       </div>
                     ) : (
-                      <button type="button" className="dash-past" onClick={() => openPast(true)}>
+                      <button type="button" className="dash-past" data-tour="past" onClick={() => openPast(true)}>
                         View past data
                       </button>
                     );
@@ -3603,7 +3699,7 @@ export function FarmMap() {
                     See details
                   </button>
                   {activeFarm && (
-                    <button className="dash-details secondary" onClick={openEditDetails}>
+                    <button className="dash-details secondary" data-tour="edit" onClick={openEditDetails}>
                       Edit farm details
                     </button>
                   )}
@@ -3616,6 +3712,7 @@ export function FarmMap() {
                 <button
                   type="button"
                   className="crop-entry"
+                  data-tour="crops"
                   onClick={() => {
                     setSheetView("crops");
                     setSheet("full");
@@ -3638,8 +3735,10 @@ export function FarmMap() {
                   </svg>
                 </button>
 
-                <h3 className="dash-heading">MY FARMS</h3>
-                <FarmCarousel farms={farms} activeId={activeId} onSelect={selectFarm} onAdd={startNewFarm} />
+                <div data-tour="farms">
+                  <h3 className="dash-heading">MY FARMS</h3>
+                  <FarmCarousel farms={farms} activeId={activeId} onSelect={selectFarm} onAdd={startNewFarm} />
+                </div>
               </>
             )}
             </>
@@ -3748,7 +3847,7 @@ export function FarmMap() {
         <div className="side-menu-header">
           <img className="side-menu-logo" src={logo} alt="Oryzon" draggable={false} />
         </div>
-        <div className="side-menu-items">
+        <div className="side-menu-items" data-tour="menu-items">
           <button
             className={`side-menu-item ${sheetView === "dashboard" ? "active" : ""}`}
             aria-current={sheetView === "dashboard" ? "page" : undefined}
@@ -3814,8 +3913,21 @@ export function FarmMap() {
           >
             + Add new map
           </button>
+          <button
+            className="side-menu-item"
+            tabIndex={menuOpen ? 0 : -1}
+            onClick={() => {
+              setMenuOpen(false);
+              window.dispatchEvent(new Event(TOUR_REPLAY_EVENT));
+            }}
+          >
+            <span aria-hidden="true">▶</span> Play tutorial
+          </button>
         </div>
       </nav>
+
+      {/* guided tour: spotlights the real controls above */}
+      <Tutorial ctl={tourCtl} />
 
       {/* "Deleted. Undo" */}
       {undoItem && (
