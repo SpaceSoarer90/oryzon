@@ -57,6 +57,7 @@ export interface CropEntry {
   actual_yield: RangeStat;
   ideal_yield: IdealStat;
   relative_yield: RangeStat;
+  maturity_days: RangeStat | null;
 }
 export interface PreCrop { type: "yield_crop" | "cover"; id: string; actual_yield_mean: number }
 export interface SoilDelta { d_soc_kg_ha: number; d_son_kg_ha: number; mineral_n_end_kg_ha: number }
@@ -75,6 +76,8 @@ export interface VarietyEntry {
   rice_actual: RangeStat;
   rice_ideal: IdealStat;
   relative_yield: RangeStat;
+  maturity_days: RangeStat | null;
+  days_from_plan_start: RangeStat | null;
   soil_delta: SoilDelta;
   metadata: RunMeta;
   failed_runs: FailedRun[];

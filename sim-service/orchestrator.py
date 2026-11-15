@@ -161,7 +161,7 @@ class Orchestrator:
 
     def _rank_varieties(self, *, varieties: list[str], actual: dict, ideal: dict,
                         pre_crop: PreCrop | None, meta: Metadata,
-                        windows, notes: list[str]) -> list[VarietyEntry]:
+                        windows, notes: list[str], plan_start_dates: dict) -> list[VarietyEntry]:
         """actual/ideal: (variety|crop_id, window) -> _RunOutcome. Rice ideal ceiling
         per scenario = max over varieties (spec §4), so varieties rank in yield order."""
         ceiling: dict[tuple, float] = {}
@@ -174,6 +174,7 @@ class Orchestrator:
         entries: list[VarietyEntry] = []
         for v in varieties:
             ys, rys, ideals, soils, fails = [], [], [], [], []
+            maturity_days, plan_maturity_days = [], []
             for w in windows:
                 a_out = actual.get((v, w))
                 i_out = ideal.get((v, w))
@@ -199,6 +200,12 @@ class Orchestrator:
                 rys.append(ry)
                 ideals.append(ceiling[w])
                 res = a_out.result
+                final_season = res.seasons[-1]
+                if final_season.maturity_date is not None and final_season.planting_date is not None:
+                    maturity_days.append((final_season.maturity_date - final_season.planting_date).days)
+                    plan_start = plan_start_dates.get(w)
+                    if plan_start is not None:
+                        plan_maturity_days.append((final_season.maturity_date - plan_start).days)
                 if res.soil_start is not None and res.soil_end is not None:
                     soils.append((res.soil_end.soc_kg_ha - res.soil_start.soc_kg_ha,
                                   res.soil_end.son_kg_ha - res.soil_start.son_kg_ha,
@@ -217,8 +224,10 @@ class Orchestrator:
                 rank=0, variety=v, pre_crop=pre_crop,
                 rice_actual=_stats(ys),
                 rice_ideal=IdealStat(mean=round(float(np.mean(ideals)), 4)),
-                relative_yield=_stats(rys), soil_delta=soil,
-                metadata=meta, failed_runs=fails))
+                relative_yield=_stats(rys),
+                maturity_days=_stats(maturity_days) if maturity_days else None,
+                days_from_plan_start=_stats(plan_maturity_days) if plan_maturity_days else None,
+                soil_delta=soil, metadata=meta, failed_runs=fails))
         entries.sort(key=lambda e: (-e.relative_yield.mean, e.variety))
         for i, e in enumerate(entries, 1):
             e.rank = i
@@ -288,9 +297,11 @@ class Orchestrator:
             set_total(len(varieties) * len(windows) * 2)
             actual: dict = {}
             ideal: dict = {}
+            plan_start_dates: dict = {}
             for w in windows:
                 weather = self.weather.daily_weather(self._lat, self._lon, list(w))
                 pdate_s = _rebase(pdate, w[0])
+                plan_start_dates[w] = pdate_s
                 ic = self._ic(layers, pdate_s)
                 for v in varieties:
                     actual[v, w] = self._run(label=f"rice:{v}",
@@ -308,7 +319,8 @@ class Orchestrator:
                     if ideal[v, w].failure:
                         failed.append(ideal[v, w].failure)
             entries = self._rank_varieties(varieties=varieties, actual=actual, ideal=ideal,
-                                           pre_crop=None, meta=meta, windows=windows, notes=notes)
+                                           pre_crop=None, meta=meta, windows=windows, notes=notes,
+                                           plan_start_dates=plan_start_dates)
             return RecommendationResult(branch=branch, scenarios=scenarios, crops=None,
                                         varieties=entries, metadata=meta,
                                         failed_runs=failed, notes=notes)
@@ -353,10 +365,15 @@ class Orchestrator:
                         if ry > 1 + RY_TOL:
                             notes.append(f"RY > 1 for {c} in scenario {w[0]} — setup error "
                                          f"(spec §4)")
+                        crop_season = a.result.seasons[0]
+                        crop_days = ((crop_season.maturity_date - crop_season.planting_date).days
+                                     if crop_season.maturity_date is not None and crop_season.planting_date is not None
+                                     else None)
                         entries.append(CropEntry(rank=0, crop=c,
                                                  actual_yield=_stats([ay]),
                                                  ideal_yield=IdealStat(mean=round(iy, 4)),
-                                                 relative_yield=_stats([ry])))
+                                                 relative_yield=_stats([ry]),
+                                                 maturity_days=_stats([crop_days]) if crop_days is not None else None))
                 # aggregate per crop across scenarios
                 by_crop: dict[str, list[CropEntry]] = {}
                 for e in entries:
@@ -368,7 +385,9 @@ class Orchestrator:
                         actual_yield=_stats([r.actual_yield.mean for r in rows]),
                         ideal_yield=IdealStat(mean=round(
                             float(np.mean([r.ideal_yield.mean for r in rows])), 4)),
-                        relative_yield=_stats([r.relative_yield.mean for r in rows])))
+                        relative_yield=_stats([r.relative_yield.mean for r in rows]),
+                        maturity_days=_stats([r.maturity_days.mean for r in rows if r.maturity_days is not None])
+                        if any(r.maturity_days is not None for r in rows) else None))
                 ranked.sort(key=lambda e: (-e.relative_yield.mean, e.crop))
                 for i, e in enumerate(ranked, 1):
                     e.rank = i
@@ -386,9 +405,11 @@ class Orchestrator:
             set_total(len(windows) * (2 * len(varieties) + 1))
             stage1: dict = {}
             actual, ideal = {}, {}
+            plan_start_dates: dict = {}
             for w in windows:
                 weather = self.weather.daily_weather(self._lat, self._lon, list(w))
                 pdate_s = _rebase(pdate, w[0])
+                plan_start_dates[w] = pdate_s
                 ic = self._ic(layers, pdate_s)
                 stage1[w] = self._run(label=f"yield_crop:{pre_crop}",
                                       seasons=[SeasonSpec("yield_crop", pre_crop, pdate_s, est)],
@@ -440,7 +461,8 @@ class Orchestrator:
             entries = self._rank_varieties(varieties=varieties, actual=actual, ideal=ideal,
                                            pre_crop=PreCrop(type="yield_crop", id=pre_crop,
                                                             actual_yield_mean=mean_stage1),
-                                           meta=meta, windows=windows, notes=notes)
+                                           meta=meta, windows=windows, notes=notes,
+                                           plan_start_dates=plan_start_dates)
             return RecommendationResult(branch=branch, scenarios=scenarios, crops=None,
                                         varieties=entries, metadata=meta,
                                         failed_runs=failed, notes=notes)
@@ -452,9 +474,11 @@ class Orchestrator:
                                         notes=["No calibrated rice varieties yet."])
         set_total(len(varieties) * len(windows) * 2)
         actual, ideal = {}, {}
+        plan_start_dates: dict = {}
         for w in windows:
             weather = self.weather.daily_weather(self._lat, self._lon, list(w))
             pdate_s = _rebase(pdate, w[0])
+            plan_start_dates[w] = pdate_s
             ic = self._ic(layers, pdate_s)
             pdate2 = pdate_s + timedelta(days=config.COVER_TERM_DAP + config.STAGE2_GAP_DAYS)
             for v in varieties:
@@ -490,7 +514,8 @@ class Orchestrator:
         pre = PreCrop(type="cover", id="mung bean",
                       actual_yield_mean=round(float(np.mean(biomasses)), 4)) if biomasses else None
         entries = self._rank_varieties(varieties=varieties, actual=actual, ideal=ideal,
-                                       pre_crop=pre, meta=meta, windows=windows, notes=notes)
+                                       pre_crop=pre, meta=meta, windows=windows, notes=notes,
+                                       plan_start_dates=plan_start_dates)
         return RecommendationResult(branch=branch, scenarios=scenarios, crops=None,
                                     varieties=entries, metadata=meta,
                                     failed_runs=failed, notes=notes)

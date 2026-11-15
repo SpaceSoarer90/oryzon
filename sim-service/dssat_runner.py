@@ -290,7 +290,8 @@ class DssatRunner:
                              f"(HWAM={row.get('HWAM')}, MDAT={mdat}): {self._why(wd, proc)}")
         maturity = datetime.strptime(mdat, "%Y%j").date()
         soil_start, soil_end = self._soil_states(wd, soil_layers)
-        return RunResult((SeasonResult("rice", season.crop_or_variety, hwam, maturity, None),),
+        return RunResult((SeasonResult("rice", season.crop_or_variety, hwam, maturity, None,
+                                       season.planting_date),),
                          soil_start, soil_end, "ok", None)
 
     def _soil_states(self, wd: Path, layers: list[dict]) -> tuple[SoilState | None, SoilState | None]:

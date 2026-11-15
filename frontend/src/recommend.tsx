@@ -34,6 +34,32 @@ function kg(v: number | null | undefined) {
 }
 
 // Waits `ms`, or less if `signal` is aborted.
+function addDays(isoDate: string, days: number): Date | null {
+  if (!isoDate || !Number.isFinite(days)) return null;
+  const parts = isoDate.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((part) => !part)) return null;
+  const result = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+  result.setUTCDate(result.getUTCDate() + Math.round(days));
+  return result;
+}
+function maturityLabel(stat: RangeStat | null | undefined, planDate: string, label = "Estimated maturity") {
+  if (!stat || !Number.isFinite(stat.mean)) return null;
+  const projected = addDays(planDate, stat.mean);
+  const dateLabel = projected
+    ? new Intl.DateTimeFormat("en-PH", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(projected)
+    : null;
+  const range = stat.p10 != null && stat.p90 != null
+    ? "Typical range: " + Math.round(stat.p10) + "–" + Math.round(stat.p90) + " days"
+    : "Based on one successful weather scenario";
+  return (
+    <div className="plan-maturity">
+      <b>{label}</b>
+      {dateLabel && <strong>{dateLabel}</strong>}
+      <span>About {Math.round(stat.mean)} days after planting · {range}</span>
+    </div>
+  );
+}
+
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     const t = window.setTimeout(resolve, ms);
@@ -563,6 +589,7 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
                   <b>{c.crop}</b>
                   <div>{pctOf(c.relative_yield)}</div>
                   <div className="plan-raw">mean yield {kg(c.actual_yield.mean)}</div>
+                  {maturityLabel(c.maturity_days, pdate)}
                 </div>
               </li>
             ))}
@@ -600,7 +627,7 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
               {phase.result.varieties[0].pre_crop.type === "cover" ? " of aboveground biomass" : ""}
             </p>
           )}
-          <VarietyList varieties={byRank(phase.result.varieties)} />
+          <VarietyList varieties={byRank(phase.result.varieties)} plantingDate={pdate} />
           <ResultNotes result={phase.result} />
           <button type="button" className="plan-run" onClick={() => setPhase({ kind: "yields", result: phase.result })}>
             See yields
@@ -630,6 +657,11 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
               <h3>Rice: {v.variety} <span className="plan-badge" aria-label={`Rank ${v.rank}`}>#{v.rank}</span></h3>
               <p>{kg(v.rice_actual.mean)} — {pctOf(v.relative_yield)}</p>
               <p className="plan-raw">compared with an ideal yield of {kg(v.rice_ideal.mean)}</p>
+              {maturityLabel(v.days_from_plan_start ?? v.maturity_days, pdate,
+                v.pre_crop ? "Estimated rice maturity (from first planting)" : "Estimated maturity")}
+              {v.pre_crop && v.maturity_days && (
+                <p className="plan-raw">Rice itself: about {Math.round(v.maturity_days.mean)} days after rice planting.</p>
+              )}
               <SoilBlock d={v.soil_delta} />
             </div>
           ))}
@@ -642,7 +674,7 @@ export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initi
   );
 }
 
-function VarietyList({ varieties }: { varieties: VarietyEntry[] }) {
+function VarietyList({ varieties, plantingDate }: { varieties: VarietyEntry[]; plantingDate: string }) {
   return (
     <ol className="plan-ranks">
       {varieties.map((v) => (
@@ -652,6 +684,11 @@ function VarietyList({ varieties }: { varieties: VarietyEntry[] }) {
             <b>{v.variety}</b>
             <div>{pctOf(v.relative_yield)}</div>
             <div className="plan-raw">mean rice yield {kg(v.rice_actual.mean)}</div>
+            {maturityLabel(v.days_from_plan_start ?? v.maturity_days, plantingDate,
+              v.pre_crop ? "Estimated rice maturity (from first planting)" : "Estimated maturity")}
+            {v.pre_crop && v.maturity_days && (
+              <div className="plan-raw">Rice itself: about {Math.round(v.maturity_days.mean)} days after rice planting.</div>
+            )}
             <SoilBlock d={v.soil_delta} />
           </div>
         </li>
