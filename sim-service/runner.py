@@ -14,7 +14,7 @@ Contract notes (spec):
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Literal, Protocol
@@ -33,12 +33,42 @@ class Termination:
 
 
 @dataclass(frozen=True)
+class IrrigationEvent:
+    date: date
+    amount_mm: float
+    method: str = "IR009"      # DSSAT irrigation method code from the preset
+
+
+@dataclass(frozen=True)
+class FertilizerEvent:
+    date: date
+    kg_n_ha: float
+    material: str = "FE005"
+    placement: str = "AP002"
+    depth_cm: float = 5.0
+
+
+@dataclass(frozen=True)
+class Management:
+    """A management package — from a selected .RIX preset (AUDIT.md §9) or the
+    runner's own defaults when None. Dates are already rebased per scenario."""
+    establishment: str = "DS"                 # "T" | "DS"
+    planting: dict = field(default_factory=dict)      # raw preset PLANTING row (ppop/pldp/...)
+    irrigation: tuple[IrrigationEvent, ...] = ()
+    irrigation_auto: bool = False             # preset MANAGEMENT IRRIG=A (DSSAT auto-schedules)
+    fertilizer: tuple[FertilizerEvent, ...] = ()
+    controls: dict = field(default_factory=dict)      # raw OPTIONS/METHODS tokens (MESOM, ...)
+    auto: dict = field(default_factory=dict)          # raw AUTOMATIC MANAGEMENT sub-tables
+
+
+@dataclass(frozen=True)
 class SeasonSpec:
     kind: CropKind
     crop_or_variety: str
     planting_date: date
     establishment: Establishment
     termination: Termination | None = None    # cover crops only
+    management: Management | None = None      # None = runner defaults
 
 
 @dataclass(frozen=True)
