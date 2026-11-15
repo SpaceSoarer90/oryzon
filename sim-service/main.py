@@ -1,0 +1,159 @@
+"""ORYZON recommendation service.  Run with (from this directory):
+
+    ../backend/.venv/bin/python -m uvicorn main:app --port 8001
+
+Endpoints:
+  GET /health          -> liveness + config and runner echo (rule 6 sources)
+  GET /api/candidates  -> calibrated crops + rice varieties (spec §5);
+                          empty lists drive the "no calibrated crops" UI states
+  POST /api/recommendations / GET /api/recommendations/{run_id}
+                       -> arrive with the rice branch (AUDIT.md §6, phases 3+)
+
+The existing weather API (../backend/) stays untouched and deployed; this service
+runs wherever the processed data lives.
+"""
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date
+from typing import Literal
+from uuid import uuid4
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+import config
+from orchestrator import Orchestrator, Progress
+from runner import build_runner
+from store import SoilStore, WeatherStore
+
+
+class FarmInput(BaseModel):
+    lat: float
+    lon: float
+    establishment: Literal["T", "DS"] = "DS"   # transplanted / direct-seeded (O3)
+
+
+class RecommendRequest(BaseModel):
+    farm: FarmInput
+    branch: Literal["rice", "yield_crops", "monggo"]
+    planting_date: date                        # the ONE UI date (spec §2)
+    pre_crop: str | None = None                # Yield Crops branch, stage 2: the picked crop
+
+
+def _validate_startup() -> None:
+    """Fail fast on configuration (spec §4 style startup validation)."""
+    if not config.DATA_ROOT.exists():
+        raise RuntimeError(f"ORYZON_DATA_ROOT does not exist: {config.DATA_ROOT}")
+    if not config.SOIL_FILE.exists():
+        raise RuntimeError(f"soil file not found (set ORYZON_SOIL_FILE): {config.SOIL_FILE}")
+    if config.IDEAL_YIELD_SOURCE not in ("simulated_potential", "table"):
+        raise RuntimeError(f"IDEAL_YIELD_SOURCE must be 'simulated_potential' or 'table', "
+                           f"got {config.IDEAL_YIELD_SOURCE!r}")
+    if config.IDEAL_YIELD_SOURCE == "table":
+        runner = build_runner(config.RUNNER)
+        if not config.IDEAL_TABLE_PATH.exists():
+            raise RuntimeError(f"IDEAL_YIELD_SOURCE=table but {config.IDEAL_TABLE_PATH} is missing")
+        needed = set(runner.calibrated_yield_crops()) | {"rice"}
+        have = {line.split(",")[0].strip() for line in
+                config.IDEAL_TABLE_PATH.read_text().splitlines() if line.strip()}
+        missing = needed - have
+        if missing:
+            raise RuntimeError(f"ideal table does not cover: {sorted(missing)}")
+
+
+_validate_startup()
+RUNNER = build_runner(config.RUNNER)
+
+app = FastAPI(title="ORYZON Recommendation API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",            # local Vite dev
+        "http://localhost:5174",            # Vite's fallback when 5173 is taken
+        "https://oryzon-pied.vercel.app",   # deployed frontend
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "config": {
+            "ideal_yield_source": config.IDEAL_YIELD_SOURCE,
+            "weather_years": config.WEATHER_YEARS,       # None = 10 most recent complete years
+            "soil_depth_cm": config.SOIL_DEPTH_CM,
+            "stage2_gap_days": config.STAGE2_GAP_DAYS,
+            "cover_term_dap": config.COVER_TERM_DAP,
+            "weather_source": config.WEATHER_SOURCE,
+            "soil_om_module": config.SOIL_OM_MODULE,
+            "data_root": str(config.DATA_ROOT),
+            "data_root_exists": config.DATA_ROOT.exists(),
+        },
+        "runner": {
+            "kind": config.RUNNER,
+            "dssat_version": RUNNER.dssat_version(),
+            "soil_version": RUNNER.soil_version(),
+            "cultivar_coefficient_source": RUNNER.cultivar_coefficient_source(),
+        },
+    }
+
+
+@app.get("/api/candidates")
+def candidates():
+    """Calibrated crops and rice varieties, enumerated from the runner (spec §5).
+    Never silently substituted with defaults; empty list = nothing calibrated yet."""
+    return {
+        "rice_varieties": RUNNER.calibrated_rice_varieties(),
+        "yield_crops": RUNNER.calibrated_yield_crops(),
+        "source": config.RUNNER,
+    }
+
+
+WEATHER = WeatherStore(config.DATA_ROOT)
+SOILS = SoilStore(config.SOIL_FILE)
+ORCHESTRATOR = Orchestrator(build_runner(config.RUNNER), WEATHER, SOILS)
+
+_RUNS: dict[str, dict] = {}
+_EXEC = ThreadPoolExecutor(max_workers=1)   # DSSAT is heavy: one recommendation at a time
+
+
+def _execute(run_id: str, req: dict) -> None:
+    entry = _RUNS[run_id]
+    entry["status"] = "running"
+    progress = Progress()
+    entry["progress"] = progress.snapshot()
+    try:
+        result = ORCHESTRATOR.recommend(
+            req, run_id=run_id,
+            tick=lambda: entry.update(progress=progress.tick() or progress.snapshot()),
+            set_total=lambda n: entry.update(progress=progress.set_total(n) or progress.snapshot()))
+        entry.update(status="done", result=result.model_dump())
+    except Exception as exc:
+        entry.update(status="failed", error=f"{type(exc).__name__}: {exc}")
+
+
+@app.post("/api/recommendations", status_code=202)
+def start_recommendation(req: RecommendRequest):
+    """Validate, queue the pipeline, return a run id. Poll the GET route for
+    progress and the final result (spec §6 progress/error states)."""
+    if req.branch == "rice" and req.pre_crop is not None:
+        raise HTTPException(422, "pre_crop is only valid for the yield_crops branch")
+    if req.branch == "yield_crops" and req.pre_crop is not None \
+            and req.pre_crop not in RUNNER.calibrated_yield_crops():
+        raise HTTPException(422, f"pre_crop {req.pre_crop!r} is not a calibrated yield crop")
+    run_id = uuid4().hex[:12]
+    _RUNS[run_id] = {"status": "queued", "progress": {"done": 0, "total": None},
+                     "result": None, "error": None}
+    _EXEC.submit(_execute, run_id, req.model_dump(mode="python"))
+    return {"run_id": run_id}
+
+
+@app.get("/api/recommendations/{run_id}")
+def get_recommendation(run_id: str):
+    entry = _RUNS.get(run_id)
+    if entry is None:
+        raise HTTPException(404, f"unknown run {run_id}")
+    return entry

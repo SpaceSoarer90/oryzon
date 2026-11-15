@@ -8,4 +8,6 @@ scipy
 pillow
 psutil
 numpy
+dssattools
+h5py
 

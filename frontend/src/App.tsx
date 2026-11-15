@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 import { Landing } from "./landing";
 import { FarmMap } from "./map";
+import { PlanNext } from "./recommend";
 
-// Tiny hash-based routing (no extra packages):
-//   /          -> landing page
-//   /#map      -> the map screen
+//   /#plan    -> the plan-next-season (recommendation) screen
 // Refreshing on the map keeps you there, and the browser's back button returns to the landing page.
 function useHash(): string {
   const [hash, setHash] = useState(window.location.hash);
@@ -18,6 +17,8 @@ function useHash(): string {
 
 export default function App() {
   const hash = useHash();
+
+  if (hash === "#plan") return <PlanNext onBack={() => { window.location.hash = "map"; }} />;
 
   if (hash === "#map") return <FarmMap onBack={() => { window.location.hash = ""; }} />;
 

@@ -81,7 +81,7 @@ type YieldUnit = "tons" | "kg" | "cavans";
 type IrrigationSource = "government" | "communal" | "pump" | "river" | "other";
 interface FarmDetails {
   lastCrop: string;
-  totalYield: string; // digits and at most one decimal point
+  lastHarvestYield: string; // digits and at most one decimal point
   yieldUnit: YieldUnit;
   harvestDate: string; // YYYY-MM-DD
   water: Water | null;
@@ -92,7 +92,7 @@ interface FarmDetails {
 }
 const EMPTY_DETAILS: FarmDetails = {
   lastCrop: "",
-  totalYield: "",
+  lastHarvestYield: "",
   yieldUnit: "tons",
   harvestDate: "",
   water: null,
@@ -125,8 +125,8 @@ function sanitizeDecimal(v: string): string {
 // Older saves may hold text like "4.5 tons" or a free-typed water source: keep what still fits.
 function normalizeDetails(raw: Partial<FarmDetails> | undefined): FarmDetails {
   const d = { ...EMPTY_DETAILS, ...raw };
-  const num = String(d.totalYield ?? "").match(/\d+(\.\d+)?|\.\d+/);
-  d.totalYield = num ? num[0] : "";
+  const num = String(d.lastHarvestYield ?? "").match(/\d+(\.\d+)?|\.\d+/);
+  d.lastHarvestYield = num ? num[0] : "";
   if (!YIELD_UNITS.some((u) => u.value === d.yieldUnit)) d.yieldUnit = "tons";
   if (!IRRIGATION_SOURCES.some((o) => o.value === d.irrigationSource)) d.irrigationSource = "";
   return d;
@@ -255,16 +255,16 @@ function normalizePlots(farm: Farm): Plot[] {
   }
   const plot = newPlot(polygonAreaHa(farm.points).toFixed(2));
   const d = farm.details;
-  if (d && (d.lastCrop || d.totalYield || d.harvestDate)) {
+  if (d && (d.lastCrop || d.lastHarvestYield || d.harvestDate)) {
     plot.cropRecords = [
-      { ...newCropRecord(), crop: d.lastCrop, amount: d.totalYield, unit: d.yieldUnit, harvestDate: d.harvestDate },
+      { ...newCropRecord(), crop: d.lastCrop, amount: d.lastHarvestYield, unit: d.yieldUnit, harvestDate: d.harvestDate },
     ];
   }
   plot.soil.soilTest = d?.soilTest ?? null;
   return [plot];
 }
 
-interface Farm {
+export interface Farm {
   id: string;
   name: string;
   points: LatLng[];
@@ -272,7 +272,7 @@ interface Farm {
   details?: FarmDetails;
   plots?: Plot[]; // each plot: its name, area, past crop records and soil readings
 }
-interface FarmStore {
+export interface FarmStore {
   farms: Farm[];
   activeId: string | null;
 }
@@ -284,7 +284,7 @@ const isPoints = (v: unknown): v is LatLng[] =>
   v.length >= 3 &&
   v.every((p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite));
 
-function loadStore(): FarmStore {
+export function loadStore(): FarmStore {
   try {
     const raw = localStorage.getItem(FARMS_KEY);
     if (raw) {
@@ -382,7 +382,7 @@ const farmIcon = L.divIcon({
 
 /* ---------- helpers ---------- */
 
-function centroid(points: LatLng[]): LatLng {
+export function centroid(points: LatLng[]): LatLng {
   const n = points.length;
   return [
     points.reduce((s, p) => s + p[0], 0) / n,
@@ -1189,7 +1189,7 @@ function farmDetailRows(farm: Farm, place: string | null): [string, string][] {
     both: "Rain-fed and irrigation",
   };
   const unitLabel = YIELD_UNITS.find((u) => u.value === d?.yieldUnit)?.label ?? "tons";
-  const yieldText = d?.totalYield && /\d/.test(d.totalYield) ? `${d.totalYield} ${unitLabel}` : "Not provided";
+  const yieldText = d?.lastHarvestYield && /\d/.test(d.lastHarvestYield) ? `${d.lastHarvestYield} ${unitLabel}` : "Not provided";
   const rows: [string, string][] = [
     ["Location", or(farm.location || place)],
     ["Farm size", `${polygonAreaHa(farm.points).toFixed(2)} ha`],
@@ -1225,7 +1225,7 @@ function farmDetailRows(farm: Farm, place: string | null): [string, string][] {
     // Farms saved before plots existed.
     rows.push(
       ["Last crop planted", or(d?.lastCrop)],
-      ["Total yield", yieldText],
+      ["Last harvest yield", yieldText],
       ["Harvest date", or(d?.harvestDate ? formatDate(d.harvestDate) : null)],
       ["Water availability", d?.water ? waterText[d.water] : "Not provided"],
     );
@@ -1287,7 +1287,7 @@ function yieldSeries(farm: Farm): { values: number[]; sample: boolean; note: str
     };
   }
   const d = farm.details;
-  const amount = d ? parseFloat(d.totalYield) : NaN;
+  const amount = d ? parseFloat(d.lastHarvestYield) : NaN;
   const season = d?.harvestDate ? seasonOf(d.harvestDate) : null;
   if (d && Number.isFinite(amount) && amount > 0 && season !== null) {
     const values = [0, 0, 0, 0];
@@ -1657,7 +1657,7 @@ function SetupForm({
       irrigationEnd: isGovernment ? d.irrigationEnd : "",
       // These old farm-level answers now live in each plot's crop records and soil answers.
       lastCrop: "",
-      totalYield: "",
+      lastHarvestYield: "",
       harvestDate: "",
       soilTest: null,
     };
@@ -3036,6 +3036,11 @@ export function FarmMap({ onBack }: { onBack?: () => void }) {
                   {activeFarm && (
                     <button className="dash-details secondary" onClick={openEditDetails}>
                       Edit farm details
+                    </button>
+                  )}
+                  {activeFarm && poly.closed && (
+                    <button className="dash-details plan-entry" onClick={() => { window.location.hash = "plan"; }}>
+                      Plan next season
                     </button>
                   )}
                 </>

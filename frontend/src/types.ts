@@ -40,3 +40,58 @@ export interface GridMeta {
 
 // [[south, west], [north, east]]: where a heat map image is pinned on the map (Leaflet ImageOverlay bounds)
 export type Bounds = [[number, number], [number, number]];
+
+// ---- Recommendation service (sim-service; spec §7 result schema) ----
+
+export type Branch = "rice" | "yield_crops" | "monggo";
+
+export interface RangeStat {
+  mean: number;
+  p10: number | null;   // null in deterministic mode (one weather year)
+  p90: number | null;
+}
+export interface IdealStat { mean: number }
+export interface CropEntry {
+  rank: number;
+  crop: string;
+  actual_yield: RangeStat;
+  ideal_yield: IdealStat;
+  relative_yield: RangeStat;
+}
+export interface PreCrop { type: "yield_crop" | "cover"; id: string; actual_yield_mean: number }
+export interface SoilDelta { d_soc_kg_ha: number; d_son_kg_ha: number; mineral_n_end_kg_ha: number }
+export interface RunMeta {
+  dssat_version: string;
+  weather_source: string;
+  soil_om_module: string;
+  cultivar_coefficient_source: string;
+  ideal_yield_source: string;
+}
+export interface FailedRun { sequence: string; scenario: number; run_type: "actual" | "ideal"; error: string }
+export interface VarietyEntry {
+  rank: number;
+  variety: string;
+  pre_crop: PreCrop | null;   // null for the Rice branch
+  rice_actual: RangeStat;
+  rice_ideal: IdealStat;
+  relative_yield: RangeStat;
+  soil_delta: SoilDelta;
+  metadata: RunMeta;
+  failed_runs: FailedRun[];
+}
+export interface RecommendationResult {
+  branch: Branch;
+  scenarios: number[];        // weather years the scenarios used
+  crops: CropEntry[] | null;  // Yield Crops branch, stage 1 only
+  varieties: VarietyEntry[];
+  metadata: RunMeta;
+  notes: string[];
+  failed_runs: FailedRun[];
+}
+export interface Candidates { rice_varieties: string[]; yield_crops: string[]; source: string }
+export interface RecRunStatus {
+  status: "queued" | "running" | "done" | "failed";
+  progress: { done: number; total: number | null };
+  result: RecommendationResult | null;
+  error: string | null;
+}

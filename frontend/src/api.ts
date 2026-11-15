@@ -1,7 +1,9 @@
-import type { LatLng, DayData, DayGrid, GridMeta, MetricKey, Bounds } from "./types";
+import type { LatLng, DayData, DayGrid, GridMeta, MetricKey, Bounds, Branch, Candidates, RecRunStatus } from "./types";
 
-// const API = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
-const API = "https://oryzon-wyyo.onrender.com";
+// Both base URLs come from the environment when set; the defaults match the current
+// deployment (weather API on Render) and local development (recommendation service).
+const API = ((import.meta.env.VITE_API_URL as string | undefined) ?? "https://oryzon-wyyo.onrender.com").replace(/\/$/, "");
+const SIM_API = ((import.meta.env.VITE_SIM_API_URL as string | undefined) ?? "http://localhost:8002").replace(/\/$/, "");
 
 // Leaflet uses [lat, lng]; GeoJSON uses [lng, lat] and the ring must be closed.
 export function toGeoJSONPolygon(points: LatLng[]): GeoJSON.Polygon {
@@ -51,3 +53,35 @@ export const heatmapUrl = (layer: MetricKey, date: string) =>
 // Heat map: one transparent PNG per layer per day, drawn by the backend. A relative URL on purpose: it goes through
 export const fetchHeatmapBounds = (layer: MetricKey, signal?: AbortSignal) =>
   getJSON<Bounds>(`${API}/api/heatmap/${layer}/bounds`, signal);
+
+// ---- Recommendation service (branch -> top 3 -> Yields; spec §3) ---------------------------
+
+export const simHealthUrl = `${SIM_API}/health`;
+
+export const fetchCandidates = (signal?: AbortSignal) =>
+  getJSON<Candidates>(`${SIM_API}/api/candidates`, signal);
+
+export async function startRecommendation(
+  body: {
+    farm: { lat: number; lon: number; establishment: "T" | "DS" };
+    branch: Branch;
+    planting_date: string;
+    pre_crop?: string;
+  },
+  signal?: AbortSignal,
+): Promise<{ run_id: string }> {
+  const res = await fetch(`${SIM_API}/api/recommendations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null);
+    throw new Error(detail?.detail ?? `Request failed (${res.status})`);
+  }
+  return res.json();
+}
+
+export const getRecommendation = (runId: string, signal?: AbortSignal) =>
+  getJSON<RecRunStatus>(`${SIM_API}/api/recommendations/${runId}`, signal);
