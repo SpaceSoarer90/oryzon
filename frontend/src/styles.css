@@ -44,8 +44,8 @@ body {
   --sheet-h: calc(100% - var(--safe-top) - 76px - var(--safe-bottom));
 }
 .app.sheet-full .sheet {
-  width: calc(100% - 24px); /* 12px gap on each side, same as the top bar */
-  bottom: calc(12px + var(--safe-bottom));
+  /* width: calc(100% - 24px); /* 12px gap on each side, same as the top bar */
+  /* bottom: calc(12px + var(--safe-bottom)); */
   border-radius: 30px;
 }
 .map {
@@ -2372,5 +2372,28 @@ body {
   }
   .map-notice {
     transition: none;
+  }
+}
+
+/* ---------- wide windows and landscape phones: the day picker and reading tiles stay on the map
+   while the sheet is full. On phones in portrait (under 800px) the full sheet covers the map, so they
+   still hide there. Keep 800px in sync with WIDE_QUERY in map.tsx. ---------- */
+ @media (min-width: 800px) {
+  /* the full sheet is a 520px column in the middle: sit in the space to its left, at the same height as when the sheet is half */
+  .app.sheet-full .map-timeline {
+    display: block;
+    bottom: calc(62% + 14px);
+    width: clamp(180px, calc((100% - 520px) / 2 - 24px), 340px);
+  }
+  /* the opened reading card sized itself from the sheet height, which is nearly the whole screen when full */
+  .app.sheet-full .cond-pop {
+    max-height: calc(100% - var(--safe-top) - 114px);
+  }
+}
+/* short landscape screens: the tiles (left, top) and the day picker (left, bottom) would meet, so the day picker moves right */
+@media (min-width: 800px) and (max-height: 520px) {
+  .app.sheet-full .map-timeline {
+    left: auto;
+    right: 12px;
   }
 }

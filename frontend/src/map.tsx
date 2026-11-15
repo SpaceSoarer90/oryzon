@@ -2105,6 +2105,21 @@ const SHEET_ORDER = ["peek", "half", "full"] as const;
 const TILE_LABEL: Record<MetricKey, string> = { temperature: "Temp", soilMoisture: "Soil", precipitation: "Rain" };
 const STATUS_GLYPH: Record<Level, string> = { good: "✓", watch: "!", alert: "▲", none: "–" };
 
+// True on wide windows and landscape phones, where there is room on the map beside the sheet.
+// Keep this number in sync with the 800px media queries in styles.css.
+const WIDE_QUERY = "(min-width: 800px)";
+function useWide() {
+  const [wide, setWide] = useState(() => window.matchMedia(WIDE_QUERY).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(WIDE_QUERY);
+    const update = () => setWide(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return wide;
+}
+
 export function FarmMap() {
   // Farms saved on earlier visits (empty the first time).
   const [initial] = useState(loadStore);
@@ -2136,6 +2151,7 @@ export function FarmMap() {
   const [layersOpen, setLayersOpen] = useState(false); // the three map layers stay hidden until the button is tapped
   // peek = just the "CONDITION" bar, half = partly open, full = covers the whole screen
   const [sheet, setSheet] = useState<"peek" | "half" | "full">("peek");
+  const wide = useWide();
   // the slide-out menu on the left
   const [menuOpen, setMenuOpen] = useState(false);
   // what the bottom sheet shows: the Dashboard, the detailed Condition view, the My Farms screen,
@@ -2587,7 +2603,8 @@ export function FarmMap() {
   // Undo / Clear bar while outlining the farm (the plot bar has its own).
   const farmDrawBar = drawing && !poly.closed && !plotDraw;
   // Readings sit on the map while the sheet is collapsed; when the sheet is open the dashboard shows them.
-  const showConditions = poly.closed && !!activeFarm && sheet === "peek" && sheetView !== "setup" && !plotDraw && !farmDrawBar;
+  // On a wide window or landscape phone the sheet leaves room beside it, so they stay on the map in every state.
+  const showConditions = poly.closed && !!activeFarm && (sheet === "peek" || wide) && sheetView !== "setup" && !plotDraw && !farmDrawBar;
   // The day picker (with the legend of the selected layer) floats above the sheet.
   const showTimeline =
     !!dates && !!date && (poly.closed || !!dataLayer) && !plotDraw && !farmDrawBar && !(selectedPlot && sheetView !== "setup");
