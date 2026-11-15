@@ -93,4 +93,4 @@ EXPERIMENTS_DIR = Path(os.environ.get("ORYZON_EXPERIMENTS_DIR", str(SERVICE_DIR 
 
 # "stub" (default) or "dssat" (dssat_runner.DssatRunner: real DSSAT-CSM binary).
 #   ORYZON_DSSAT_HOME = directory built by scripts/install_dssat.sh (dscsm048 + Genotype/ + CDE files)
-RUNNER = os.environ.get("ORYZON_RUNNER", "stub")
+RUNNER = os.environ.get("ORYZON_RUNNER", "dssat")
