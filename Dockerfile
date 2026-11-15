@@ -19,8 +19,8 @@ RUN git clone --depth 1 --branch "${DSSAT_REF}" \
     && test -x /opt/dssat/dscsm048 \
     && test -s /opt/dssat/DSSATPRO.L48 \
     && test -s /opt/dssat/Genotype/RICER048.CUL \
-    && printf '4.8.6\\n' > /opt/dssat/DSSAT_VERSION \
-    && printf '%s\\n' "${DSSAT_REF}" > /opt/dssat/DSSAT_BUILD_REF
+    && printf '4.8.6\n' > /opt/dssat/DSSAT_VERSION \
+    && printf '%s\n' "${DSSAT_REF}" > /opt/dssat/DSSAT_BUILD_REF
 
 FROM python:3.12-slim-bookworm AS runtime
 
