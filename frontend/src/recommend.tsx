@@ -114,22 +114,21 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
   const ascending = (list: VarietyEntry[]) => [...list].sort((a, b) => b.rank - a.rank);
 
   return (
-    <div className="plan">
-      <header className="plan-top">
-        <button type="button" className="plan-back" onClick={onBack} aria-label="Back to the map">←</button>
-        <h1>Plan next season</h1>
-      </header>
-
+    <>
       {phase.kind === "form" && (
         <form
-          className="plan-form"
+          className="plan-form plan"
           onSubmit={(e) => { e.preventDefault(); launch(); }}
         >
+          <header className="plan-top">
+            <button type="button" className="plan-back" onClick={onBack} aria-label="Back to the map">←</button>
+            <h1>Plan next season</h1>
+          </header>
           {store.farms.length === 0 ? (
             <p className="plan-note">Set up a farm on the map first — the plan uses your farm's answers.</p>
           ) : (
             <>
-              <label className="plan-field">
+                  <label className="plan-field">
                 <span>Farm</span>
                 <select value={farmId} onChange={(e) => setFarmId(e.target.value)}>
                   {store.farms.map((f) => (
@@ -291,7 +290,7 @@ export function PlanNext({ onBack }: { onBack?: () => void }) {
           <button type="button" className="plan-run secondary" onClick={onBack}>Back to the map</button>
         </div>
       )}
-    </div>
+    </>
   );
 }
 

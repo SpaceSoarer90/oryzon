@@ -2716,7 +2716,8 @@ body {
 /* ---------- Plan next season (recommendation flow) ---------- */
 .plan {
   position: relative;
-  height: 100%;
+  width: 85%;
+  /* height: 200%; */
   overflow-y: auto;
   background: var(--cream);
   padding: calc(var(--safe-top) + 12px) 14px calc(24px + var(--safe-bottom));
