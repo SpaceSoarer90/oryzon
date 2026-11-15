@@ -56,10 +56,10 @@ type Phase =
   | { kind: "varieties"; result: RecommendationResult }
   | { kind: "yields"; result: RecommendationResult };
 
-export function PlanNext({ onBack }: { onBack?: () => void }) {
+export function PlanNext({ onBack, initialBranch }: { onBack?: () => void; initialBranch?: Branch }) {
   const [store] = useState(() => loadStore());
   const [farmId, setFarmId] = useState(store.activeId ?? store.farms[0]?.id ?? "");
-  const [branch, setBranch] = useState<Branch>("rice");
+  const [branch, setBranch] = useState<Branch>(initialBranch ?? "rice");
   const [establishment, setEstablishment] = useState<"T" | "DS">("DS");
   const [pdate, setPdate] = useState("");
   const [cands, setCands] = useState<Candidates | null>(null);

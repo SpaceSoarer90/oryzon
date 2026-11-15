@@ -252,11 +252,39 @@ function normalizePlots(farm: Farm): Plot[] {
   return [plot];
 }
 
+// What is on the lot when the farmer outlines it, and (for a newly harvested lot) what they plan to do next.
+type LotStatus = "empty" | "harvested" | "crops";
+type PostHarvest = "rest" | "yield_crop";
+
+const LOT_OPTIONS: { value: LotStatus; title: string; sub: string }[] = [
+  { value: "empty", title: "Empty (Resting Stage)", sub: "Nothing is planted right now" },
+  { value: "harvested", title: "Newly harvested", sub: "The last crop was just harvested" },
+  { value: "crops", title: "Has existing crops", sub: "A crop is growing in the field" },
+];
+const POST_HARVEST_OPTIONS: { value: PostHarvest; title: string; sub: string; pros: string[]; cons: string[] }[] = [
+  {
+    value: "rest",
+    title: "Rest",
+    sub: "Leave the field fallow for a season",
+    pros: ["Soil recovers moisture and nutrients", "Breaks pest and disease cycles", "No extra seed, labor or water cost"],
+    cons: ["No income from the field", "Weeds can take over", "Bare soil can erode"],
+  },
+  {
+    value: "yield_crop",
+    title: "Yield Crop",
+    sub: "Plant a short crop before the next rice",
+    pros: ["Extra income from the same field", "Legumes can add nitrogen to the soil", "Keeps the soil covered"],
+    cons: ["Costs seed, labor and water", "Can use up soil moisture and nutrients", "Timing is tight before the next rice"],
+  },
+];
+
 export interface Farm {
   id: string;
   name: string;
   points: LatLng[];
   location?: string; // filled in on the Set up farm screen
+  lotStatus?: LotStatus; // answered right after the outline is finished
+  postHarvest?: PostHarvest; // only asked when the lot is newly harvested
   details?: FarmDetails;
   plots?: Plot[]; // each plot: its name, area, past crop records and soil readings
 }
@@ -2443,6 +2471,8 @@ export function FarmMap() {
   const [fitNonce, setFitNonce] = useState(0);
   // First visit with no farm: show a prompt asking the user to add one.
   const [welcome, setWelcome] = useState(initial.farms.length === 0);
+  // After a new outline is finished: first "what is on your lot?", then (if newly harvested) "post-harvest options".
+  const [lotPrompt, setLotPrompt] = useState<"status" | "postHarvest" | "plan" | null>(null);
   const [data, setData] = useState<DayData[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -2546,7 +2576,8 @@ export function FarmMap() {
       return [...prev, { id, name: `Farm ${n}`, points: poly.points }];
     });
     setActiveId(id);
-    // Ask for the farm's details right after the outline is finished.
+    // Ask what is on the lot first; the Set up screen opens behind the prompt and is ready when it closes.
+    setLotPrompt("status");
     setSheetView("setup");
     setSheet("full");
   }, [poly, activeId]);
@@ -2848,6 +2879,29 @@ export function FarmMap() {
     }
   }
 
+  // Answer to "What is on your lot?". Newly harvested leads to the post-harvest question; the others finish.
+  function chooseLotStatus(status: LotStatus) {
+    setFarms((prev) =>
+      prev.map((f) => {
+        if (f.id !== activeId) return f;
+        const { postHarvest: _dropped, ...rest } = f; // an old post-harvest answer no longer applies
+        return { ...rest, lotStatus: status };
+      }),
+    );
+    setLotPrompt(status === "harvested" ? "postHarvest" : null);
+  }
+  // Answer to "Post-harvest options".
+  function choosePostHarvest(choice: PostHarvest) {
+    setFarms((prev) => prev.map((f) => (f.id === activeId ? { ...f, postHarvest: choice } : f)));
+    setLotPrompt(choice === "yield_crop" ? "plan" : null); // a yield crop leads on to planning the next season
+  }
+  // "Plan next season" after choosing a yield crop: open the plan form, already set to "a crop before rice".
+  function startPlanning() {
+    setLotPrompt(null);
+    setSheetView("plan");
+    setSheet("full");
+  }
+
   // Open the My Farms screen in the bottom sheet.
   function openFarmsView() {
     setMenuOpen(false);
@@ -2936,6 +2990,7 @@ export function FarmMap() {
   }
 
   function startNewFarm() {
+    setLotPrompt(null);
     setSelectedPlotId(null);
     setDrawError(null);
     setCheckingArea(false);
@@ -3009,6 +3064,8 @@ export function FarmMap() {
       mapRef.current?.setView(START_CENTER, START_ZOOM);
     } else {
       setSheet(poly.closed ? "half" : "peek");
+      // Skipped before any farm screen was shown: if there is still no farm, ask for one (same as the first visit).
+      if (!poly.closed && farms.length === 0) setWelcome(true);
     }
   }
   tourRef.current = { scene: tourScene, end: tourEnd };
@@ -3575,6 +3632,7 @@ export function FarmMap() {
             />
           ) : sheetView === "plan" ? (
             <PlanNext
+              initialBranch={activeFarm?.postHarvest === "yield_crop" ? "yield_crops" : undefined}
               onBack={() => {
                 setSheetView("dashboard");
                 setSheet("half");
@@ -3835,6 +3893,75 @@ export function FarmMap() {
               Add a new farm
             </button>
           </div>
+        </div>
+      )}
+
+      {/* new outline finished: what is on the lot, then the post-harvest choice */}
+      {lotPrompt && (
+        <div className="welcome-backdrop lot-backdrop">
+          {lotPrompt === "status" ? (
+            <div key="status" className="lot-card" role="dialog" aria-modal="true" aria-labelledby="lot-title">
+              <h2 id="lot-title">What is on your lot?</h2>
+              <p>Tell us the state of your field right now, so we can ask the right questions next.</p>
+              <div className="lot-options">
+                {LOT_OPTIONS.map((o, i) => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    className={`lot-option tone-${i + 1}`}
+                    onClick={() => chooseLotStatus(o.value)}
+                  >
+                    <b>{o.title}</b>
+                    <small>{o.sub}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : lotPrompt === "plan" ? (
+            <div key="plan" className="lot-card compact" role="dialog" aria-modal="true" aria-labelledby="plan-title">
+              <h2 id="plan-title">Plan next season</h2>
+              <p>Pick a crop to plant before your next rice{activeFarm ? ` on ${activeFarm.name}` : ""}.</p>
+              <div className="lot-options">
+                <button type="button" className="lot-option tone-1" onClick={startPlanning}>
+                  <b>Plan next season</b>
+                  <small>Answer a few questions</small>
+                </button>
+                <button type="button" className="lot-option tone-3" onClick={() => setLotPrompt(null)}>
+                  <b>Not now</b>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div key="post" className="lot-card compact" role="dialog" aria-modal="true" aria-labelledby="post-title">
+              <h2 id="post-title">Post-harvest options</h2>
+              <div className="lot-options">
+                {POST_HARVEST_OPTIONS.map((o, i) => (
+                  <div key={o.value} className="post-option">
+                    <button
+                      type="button"
+                      className={`lot-option tone-${i + 1}`}
+                      onClick={() => choosePostHarvest(o.value)}
+                    >
+                      <b>{o.title}</b>
+                      <small>{o.sub}</small>
+                    </button>
+                    <div className="pros-cons">
+                      <ul className="pros">
+                        {o.pros.map((t) => (
+                          <li key={t}>{t}</li>
+                        ))}
+                      </ul>
+                      <ul className="cons">
+                        {o.cons.map((t) => (
+                          <li key={t}>{t}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
