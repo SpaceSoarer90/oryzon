@@ -124,10 +124,10 @@ def run_filex(runner, directory: Path, filename: str) -> dict:
     soil_prefix = soil_id[:2].upper()
     if not any(p.name.upper() == f"{soil_prefix}.SOL" for p in work_dir.glob("*.SOL")):
         soil_source = Path(config.SOIL_FILE)
-        if not soil_source.exists():
+        if not soil_source.exists() or soil_source.stem.upper() != soil_prefix:
             raise ValueError(
-                f"{filename} references ID_SOIL={soil_id}; no {soil_prefix}.SOL was supplied "
-                "and the configured soil file is unavailable.")
+                f"{filename} references ID_SOIL={soil_id}; place the matching {soil_prefix}.SOL "
+                f"beside the FileX (the configured soil file is {soil_source.name}).")
         shutil.copy2(soil_source, work_dir / f"{soil_prefix}.SOL")
 
     try:
