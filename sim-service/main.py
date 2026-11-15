@@ -23,6 +23,7 @@ from pydantic import BaseModel
 
 import config
 from experiment_file import describe, load_presets
+from filex_runner import discover_filex, run_filex
 from orchestrator import Orchestrator, Progress
 from runner import build_runner
 from store import SoilStore, WeatherStore
@@ -113,7 +114,29 @@ def candidates():
         "rice_varieties": RUNNER.rice_cultivar_options(),
         "yield_crops": RUNNER.calibrated_yield_crops(),
         "source": config.RUNNER,
+        "weather_windows": len(ORCHESTRATOR.scenario_windows()),
     }
+
+
+@app.get("/api/filex")
+def filex_experiments():
+    """Discover raw DSSAT FileX experiments placed in sim-service/experiments."""
+    return {"experiments": discover_filex(config.EXPERIMENTS_DIR)}
+
+
+@app.post("/api/filex/{filename}/run")
+def run_filex(filename: str):
+    """Run an original crop-specific FileX without converting it into a rice preset."""
+    if not hasattr(RUNNER, "home") or not hasattr(RUNNER, "exe"):
+        raise HTTPException(503, "direct FileX execution requires ORYZON_RUNNER=dssat")
+    try:
+        return run_filex(RUNNER, config.EXPERIMENTS_DIR, filename)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(500, str(exc))
 
 
 @app.get("/api/experiments")
