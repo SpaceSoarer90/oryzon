@@ -74,6 +74,7 @@ app.add_middleware(
         "http://localhost:5173",            # local Vite dev
         "http://localhost:5174",            # Vite's fallback when 5173 is taken
         "https://oryzon-pied.vercel.app",   # deployed frontend
+        "https://oryzon-real.onrender.com",  # deployed Render frontend
     ],
     allow_methods=["*"],
     allow_headers=["*"],
