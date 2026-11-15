@@ -65,7 +65,7 @@ DEFAULT_MANAGEMENT = {
 
 class DssatRunner:
     def __init__(self, dssat_home: str | Path | None = None, soil_file: str | Path | None = None):
-        self.home = Path(dssat_home or os.environ.get("ORYZON_DSSAT_HOME", "")).expanduser()
+        self.home = Path(dssat_home or os.environ.get("ORYZON_DSSAT_HOME", "")).expanduser().resolve()
         if not self.home or not (self.home / EXE_NAME).exists():
             raise RuntimeError(
                 f"DSSAT executable not found: set ORYZON_DSSAT_HOME to a directory containing "
@@ -95,6 +95,10 @@ class DssatRunner:
 
     def calibrated_rice_varieties(self) -> list[str]:
         return [vid for vid, _ in self._cultivars()]
+
+    def rice_cultivar_options(self) -> list[dict[str, str]]:
+        """Cultivar IDs and display names parsed directly from RICER048.CUL."""
+        return [{"id": vid, "name": name or vid} for vid, name in self._cultivars()]
 
     def calibrated_yield_crops(self) -> list[str]:
         return []      # none calibrated yet (see module docstring); branch returns empty state

@@ -202,9 +202,14 @@ def load_presets(directory: Path) -> dict[str, ExperimentPreset]:
     for path in sorted(directory.iterdir()):
         if path.suffix.upper() != ".RIX" or not path.is_file():
             continue
-        preset = parse_filex(path)
+        try:
+            preset = parse_filex(path)
+        except (ValueError, IndexError, KeyError):
+            # It remains available to the raw FileX runner; it simply is not a
+            # management preset that the rice recommendation UI can rebase.
+            continue
         if preset.planting_date is None:
-            raise ValueError(f"experiment preset {path.name}: PLANTING DETAILS has no valid PDATE")
+            continue
         out[preset.experiment_id] = preset
     return out
 
